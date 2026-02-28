@@ -1,0 +1,352 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id                 String          @id @default(cuid())
+  name               String
+  username           String?         @unique
+  email              String          @unique
+  passwordHash       String
+  status             AdminUserStatus @default(ACTIVE)
+  lastLoginAt        DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  createdAllocations Allocation[]    @relation("AllocationCreatedBy")
+  receivedPayments   Payment[]       @relation("PaymentReceivedBy")
+  closedComplaints   Complaint[]     @relation("ComplaintClosedBy")
+  createdNotices     Notice[]        @relation("NoticeCreatedBy")
+
+  @@index([status])
+}
+
+model Hostel {
+  id            String       @id @default(cuid())
+  name          String
+  address       String
+  contactNumber String?
+  timezone      String?
+  status        HostelStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  blocks        Block[]
+  complaints    Complaint[]
+  notices       Notice[]
+
+  @@index([status])
+}
+
+model Block {
+  id        String    @id @default(cuid())
+  hostelId  String
+  name      String
+  description String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  hostel    Hostel    @relation(fields: [hostelId], references: [id], onDelete: Cascade)
+  floors    Floor[]
+
+  @@unique([hostelId, name])
+  @@index([hostelId])
+}
+
+model Floor {
+  id        String    @id @default(cuid())
+  blockId   String
+  floorNumber Int
+  label     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  block     Block     @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  rooms     Room[]
+
+  @@unique([blockId, floorNumber])
+  @@index([blockId])
+}
+
+model Room {
+  id               String      @id @default(cuid())
+  floorId          String
+  roomNumber       String
+  sharingType      SharingType
+  attributes       Json?
+  basePrice        Decimal?    @db.Decimal(10, 2)
+  genderRestriction GenderRestriction @default(ANY)
+  status           RoomStatus  @default(ACTIVE)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  floor            Floor       @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  beds             Bed[]
+  complaints       Complaint[]
+
+  @@unique([floorId, roomNumber])
+  @@index([floorId, status])
+  @@index([sharingType, status])
+}
+
+model Bed {
+  id          String       @id @default(cuid())
+  roomId       String
+  bedNumber    String
+  status       BedStatus    @default(AVAILABLE)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  room         Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  allocations  Allocation[]
+
+  @@unique([roomId, bedNumber])
+  @@index([roomId, status])
+}
+
+model Resident {
+  id            String         @id @default(cuid())
+  fullName      String
+  dob           DateTime?
+  gender        Gender
+  contact       String?
+  email         String?        @unique
+  idProofType   IdProofType?
+  idProofNumber String?
+  documentsMeta Json?
+  status        ResidentStatus @default(PENDING)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  allocations   Allocation[]
+  invoices      Invoice[]
+  payments      Payment[]
+  complaints    Complaint[]
+
+  @@index([status])
+  @@index([fullName])
+  @@index([idProofType, idProofNumber])
+}
+
+model Allocation {
+  id          String           @id @default(cuid())
+  residentId  String
+  bedId       String
+  startDate   DateTime
+  endDate     DateTime?
+  status      AllocationStatus @default(ACTIVE)
+  notes       String?
+  createdById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  resident    Resident         @relation(fields: [residentId], references: [id], onDelete: Restrict)
+  bed         Bed              @relation(fields: [bedId], references: [id], onDelete: Restrict)
+  createdBy   AdminUser?       @relation("AllocationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  invoices    Invoice[]
+
+  @@index([residentId, status])
+  @@index([bedId, status])
+  @@index([startDate, endDate])
+  @@unique([residentId, bedId, startDate])
+}
+
+model Invoice {
+  id           String        @id @default(cuid())
+  residentId   String
+  allocationId String?
+  periodStart  DateTime
+  periodEnd    DateTime
+  totalAmount  Decimal       @db.Decimal(10, 2)
+  dueDate      DateTime?
+  status       InvoiceStatus @default(ISSUED)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  resident     Resident      @relation(fields: [residentId], references: [id], onDelete: Restrict)
+  allocation   Allocation?   @relation(fields: [allocationId], references: [id], onDelete: SetNull)
+  payments     Payment[]
+
+  @@index([residentId, status])
+  @@index([dueDate, status])
+  @@index([periodStart, periodEnd])
+}
+
+model Payment {
+  id           String        @id @default(cuid())
+  invoiceId    String
+  residentId   String
+  amount       Decimal       @db.Decimal(10, 2)
+  method       PaymentMethod
+  receivedAt   DateTime      @default(now())
+  reference    String?       @unique
+  status       PaymentStatus @default(COMPLETED)
+  receivedById String?
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  invoice      Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  resident     Resident      @relation(fields: [residentId], references: [id], onDelete: Restrict)
+  receivedBy   AdminUser?    @relation("PaymentReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId, status])
+  @@index([residentId, receivedAt])
+}
+
+model Complaint {
+  id              String            @id @default(cuid())
+  residentId       String
+  hostelId         String
+  roomId           String?
+  category         ComplaintCategory
+  title            String?
+  description      String
+  status           ComplaintStatus   @default(OPEN)
+  resolutionNotes  String?
+  createdAt        DateTime          @default(now())
+  closedAt         DateTime?
+  closedById       String?
+  updatedAt        DateTime          @updatedAt
+  resident         Resident          @relation(fields: [residentId], references: [id], onDelete: Restrict)
+  hostel           Hostel            @relation(fields: [hostelId], references: [id], onDelete: Restrict)
+  room             Room?             @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  closedBy         AdminUser?        @relation("ComplaintClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+
+  @@index([residentId, status])
+  @@index([hostelId, status])
+  @@index([roomId])
+  @@index([createdAt])
+}
+
+model Notice {
+  id          String       @id @default(cuid())
+  title       String
+  body        String
+  audience    NoticeAudience @default(ALL)
+  status      NoticeStatus @default(DRAFT)
+  publishedAt DateTime?
+  archivedAt  DateTime?
+  hostelId    String?
+  createdById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  hostel      Hostel?      @relation(fields: [hostelId], references: [id], onDelete: SetNull)
+  createdBy   AdminUser?   @relation("NoticeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([status, publishedAt, archivedAt])
+  @@index([hostelId, status])
+}
+
+enum AdminUserStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
+enum HostelStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SharingType {
+  SINGLE
+  DOUBLE
+  TRIPLE
+  DORMITORY
+}
+
+enum RoomStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+}
+
+enum BedStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  MAINTENANCE
+}
+
+enum GenderRestriction {
+  ANY
+  MALE_ONLY
+  FEMALE_ONLY
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum IdProofType {
+  AADHAR
+  PASSPORT
+  DRIVING_LICENSE
+  NATIONAL_ID
+  OTHER
+}
+
+enum ResidentStatus {
+  ACTIVE
+  PENDING
+  VACATED
+}
+
+enum AllocationStatus {
+  ACTIVE
+  TRANSFERRED
+  VACATED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  UPI
+  CHEQUE
+  OTHER
+}
+
+enum PaymentStatus {
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum ComplaintCategory {
+  MAINTENANCE
+  CLEANLINESS
+  ELECTRICITY
+  WATER
+  SECURITY
+  BEHAVIORAL
+  OTHER
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+}
+
+enum NoticeAudience {
+  ALL
+  ALL_RESIDENTS
+  BLOCK_SPECIFIC
+  FLOOR_SPECIFIC
+  ROOM_SPECIFIC
+}
+
+enum NoticeStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
