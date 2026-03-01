@@ -66,15 +66,27 @@
 
 :root {
   color-scheme: light;
-}
-
-body {
-  @apply text-slate-900 antialiased;
-  min-height: 100vh;
-  background:
+  --app-fg: 15 23 42;
+  --app-bg:
     radial-gradient(1100px 600px at -10% -20%, rgba(191, 219, 254, 0.7), transparent 60%),
     radial-gradient(900px 500px at 110% -10%, rgba(167, 243, 208, 0.55), transparent 65%),
     linear-gradient(170deg, #edf3ff 0%, #e9eff9 42%, #e4ebf8 100%);
+}
+
+.dark {
+  color-scheme: dark;
+  --app-fg: 226 232 240;
+  --app-bg:
+    radial-gradient(950px 520px at -10% -20%, rgba(59, 130, 246, 0.24), transparent 60%),
+    radial-gradient(800px 460px at 110% -10%, rgba(20, 184, 166, 0.2), transparent 65%),
+    linear-gradient(170deg, #050912 0%, #091221 42%, #0c1626 100%);
+}
+
+body {
+  @apply antialiased;
+  color: rgb(var(--app-fg));
+  min-height: 100vh;
+  background: var(--app-bg);
 }
 
 @layer base {
@@ -109,6 +121,32 @@ body {
   [type="submit"]:disabled,
   [type="reset"]:disabled {
     @apply cursor-not-allowed opacity-60;
+  }
+
+  .dark input,
+  .dark select,
+  .dark textarea {
+    @apply border-slate-700/80 bg-slate-900/45 text-slate-100 placeholder:text-slate-400;
+    box-shadow:
+      inset 0 1px 0 rgba(148, 163, 184, 0.18),
+      0 18px 34px -26px rgba(2, 6, 23, 0.78);
+  }
+
+  .dark button,
+  .dark [type="button"],
+  .dark [type="submit"],
+  .dark [type="reset"] {
+    @apply border-slate-700/80 bg-slate-900/45 text-slate-100;
+    box-shadow:
+      inset 0 1px 0 rgba(148, 163, 184, 0.2),
+      0 18px 34px -26px rgba(2, 6, 23, 0.75);
+  }
+
+  .dark button:hover:not(:disabled),
+  .dark [type="button"]:hover:not(:disabled),
+  .dark [type="submit"]:hover:not(:disabled),
+  .dark [type="reset"]:hover:not(:disabled) {
+    @apply bg-slate-900/60;
   }
 }
 
@@ -266,6 +304,59 @@ body {
       inset 0 1px 0 rgba(255, 255, 255, 0.42);
   }
 
+  .dark .glass-panel {
+    @apply border-slate-700;
+    border-color: rgba(51, 65, 85, 0.75);
+    background: rgba(2, 6, 23, 0.4);
+    box-shadow:
+      0 24px 60px -34px rgba(2, 6, 23, 0.88),
+      inset 0 1px 0 rgba(148, 163, 184, 0.16);
+  }
+
+  .dark .glass-card {
+    @apply border-slate-700;
+    border-color: rgba(51, 65, 85, 0.75);
+    background: rgba(15, 23, 42, 0.42);
+    box-shadow:
+      0 20px 42px -30px rgba(2, 6, 23, 0.86),
+      inset 0 1px 0 rgba(148, 163, 184, 0.14);
+  }
+
+  .dark .glass-chip {
+    @apply border-slate-700 text-slate-200;
+    border-color: rgba(51, 65, 85, 0.8);
+    background: rgba(15, 23, 42, 0.55);
+  }
+
+  .dark .glass-btn-secondary {
+    @apply border-slate-600 text-slate-100;
+    border-color: rgba(71, 85, 105, 0.8);
+    background: rgba(30, 41, 59, 0.65);
+  }
+
+  .dark .glass-btn-secondary:hover:not(:disabled) {
+    @apply border-slate-500 text-slate-50;
+    border-color: rgba(100, 116, 139, 0.8);
+    background: rgba(51, 65, 85, 0.7);
+  }
+
+  .dark .glass-loader {
+    border-color: rgba(71, 85, 105, 0.72);
+    background: rgba(2, 6, 23, 0.42);
+    box-shadow:
+      inset 0 1px 0 rgba(148, 163, 184, 0.2),
+      0 18px 38px -26px rgba(2, 6, 23, 0.84);
+  }
+
+  .dark .liquid-loader-panel {
+    @apply border-slate-700 text-slate-100;
+    border-color: rgba(51, 65, 85, 0.7);
+    background: rgba(15, 23, 42, 0.28);
+    box-shadow:
+      0 24px 60px -36px rgba(2, 6, 23, 0.8),
+      inset 0 1px 0 rgba(148, 163, 184, 0.18);
+  }
+
   .page-enter {
     animation: pageFadeInUp 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
@@ -290,6 +381,51 @@ body {
 
   .section-delay-4 {
     animation-delay: 200ms;
+  }
+}
+
+@layer utilities {
+  .dark .text-slate-900 {
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .text-slate-800 {
+    color: rgb(226 232 240) !important;
+  }
+
+  .dark .text-slate-700 {
+    color: rgb(203 213 225) !important;
+  }
+
+  .dark .text-slate-600 {
+    color: rgb(148 163 184) !important;
+  }
+
+  .dark .text-slate-500 {
+    color: rgb(148 163 184) !important;
+  }
+
+  .dark .bg-white\/40 {
+    background-color: rgb(15 23 42 / 0.56) !important;
+  }
+
+  .dark .bg-white\/45 {
+    background-color: rgb(15 23 42 / 0.6) !important;
+  }
+
+  .dark .bg-white\/50 {
+    background-color: rgb(15 23 42 / 0.64) !important;
+  }
+
+  .dark .bg-white\/55 {
+    background-color: rgb(15 23 42 / 0.68) !important;
+  }
+
+  .dark .border-white\/40,
+  .dark .border-white\/50,
+  .dark .border-white\/55,
+  .dark .border-white\/60 {
+    border-color: rgb(71 85 105 / 0.72) !important;
   }
 }
 

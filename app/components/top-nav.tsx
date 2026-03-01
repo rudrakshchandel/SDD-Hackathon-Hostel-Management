@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
+import ThemeToggle from "./theme-toggle";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard" },
@@ -80,6 +81,7 @@ export default function TopNav() {
               </Link>
             );
           })}
+          <ThemeToggle />
         </div>
       </div>
     </nav>
