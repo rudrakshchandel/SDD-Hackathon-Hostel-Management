@@ -202,15 +202,15 @@ export default async function RevenuePage() {
   const totalSummary = summarizePeople(allPeople);
 
   return (
-    <main className="mx-auto max-w-7xl space-y-6 p-6">
-      <header>
+    <main className="page-enter mx-auto max-w-7xl space-y-6 p-6">
+      <header className="section-enter section-delay-1">
         <h1 className="text-2xl font-semibold">Revenue Ledger</h1>
         <p className="text-sm text-slate-600">
           Track paid vs unpaid residents across the full hostel hierarchy.
         </p>
       </header>
 
-      <section className="grid gap-3 md:grid-cols-3">
+      <section className="section-enter section-delay-2 grid gap-3 md:grid-cols-3">
         <div className="glass-card p-4">
           <p className="text-sm text-slate-500">Total Invoiced</p>
           <p className="mt-1 text-xl font-semibold text-slate-900">
@@ -231,7 +231,7 @@ export default async function RevenuePage() {
         </div>
       </section>
 
-      <section className="glass-panel p-4">
+      <section className="glass-panel section-enter section-delay-3 p-4">
         <div className="flex flex-wrap gap-2 text-xs">
           <span className="glass-chip">Paid: {totalSummary.paidPeople}</span>
           <span className="glass-chip">Unpaid: {totalSummary.unpaidPeople}</span>
@@ -240,9 +240,11 @@ export default async function RevenuePage() {
       </section>
 
       {hostels.length === 0 ? (
-        <section className="glass-panel p-6 text-sm text-slate-600">No hostel data found.</section>
+        <section className="glass-panel section-enter section-delay-4 p-6 text-sm text-slate-600">
+          No hostel data found.
+        </section>
       ) : (
-        <section className="space-y-4">
+        <section className="section-enter section-delay-4 space-y-4">
           {hostels.map((hostel) => {
             const hostelPeople: PersonFinancial[] = [];
 

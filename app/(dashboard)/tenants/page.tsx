@@ -192,15 +192,15 @@ export default async function TenantsPage() {
   ];
 
   return (
-    <main className="mx-auto max-w-7xl space-y-6 p-6">
-      <header>
+    <main className="page-enter mx-auto max-w-7xl space-y-6 p-6">
+      <header className="section-enter section-delay-1">
         <h1 className="text-2xl font-semibold">Tenants</h1>
         <p className="text-sm text-slate-600">
           View resident records, current allocation, rent, and pending due date.
         </p>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="section-enter section-delay-2 grid gap-3 sm:grid-cols-3">
         <div className="glass-card p-4">
           <p className="text-xs uppercase tracking-wide text-slate-500">Active</p>
           <p className="text-2xl font-semibold">{totals.active}</p>
@@ -215,7 +215,7 @@ export default async function TenantsPage() {
         </div>
       </section>
 
-      <section className="space-y-4">
+      <section className="section-enter section-delay-3 space-y-4">
         {sections.map((section) => (
           <details
             key={section.status}

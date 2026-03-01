@@ -232,7 +232,7 @@ export default function HostelConfigClient() {
 
   if (hostelQuery.isLoading && !hostelQuery.data) {
     return (
-      <main className="p-6">
+      <main className="mx-auto max-w-7xl p-6">
         <div className="mx-auto flex min-h-[45vh] max-w-4xl items-center justify-center">
           <LiquidLoader label="Loading hostel configuration..." />
         </div>
@@ -244,8 +244,8 @@ export default function HostelConfigClient() {
     queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null;
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 p-6">
-      <header>
+    <main className="page-enter mx-auto max-w-7xl space-y-6 p-6">
+      <header className="section-enter section-delay-1">
         <h1 className="text-2xl font-semibold">Hostel Configuration</h1>
         <p className="text-sm text-slate-600">
           Manage hostel profile, blocks, floors, rooms, and beds.
@@ -253,17 +253,17 @@ export default function HostelConfigClient() {
       </header>
 
       {error ? (
-        <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+        <div className="section-enter section-delay-2 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </div>
       ) : null}
       {message ? (
-        <div className="rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700">
+        <div className="section-enter section-delay-2 rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700">
           {message}
         </div>
       ) : null}
 
-      <section className="glass-panel p-4">
+      <section className="glass-panel section-enter section-delay-2 p-4">
         <h2 className="mb-3 text-lg font-medium">Hostel Profile</h2>
         <form className="grid gap-3 md:grid-cols-2" onSubmit={submitHostel}>
           <Input
@@ -307,7 +307,7 @@ export default function HostelConfigClient() {
       </section>
 
       {hostel ? (
-        <section className="space-y-3 glass-panel p-4">
+        <section className="space-y-3 glass-panel section-enter section-delay-3 p-4">
           <h2 className="text-lg font-medium">Structure Tree</h2>
           <form
             className="grid gap-2 md:grid-cols-3"

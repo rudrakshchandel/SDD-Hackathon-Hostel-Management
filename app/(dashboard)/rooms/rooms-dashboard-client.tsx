@@ -363,7 +363,7 @@ export default function RoomsDashboardClient() {
 
   if (roomsQuery.isLoading && !roomsQuery.data) {
     return (
-      <main className="p-6 text-slate-700">
+      <main className="mx-auto max-w-7xl p-6 text-slate-700">
         <div className="mx-auto flex min-h-[45vh] max-w-4xl items-center justify-center">
           <LiquidLoader label="Loading rooms..." />
         </div>
@@ -372,8 +372,8 @@ export default function RoomsDashboardClient() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl space-y-6 p-6">
-      <header className="space-y-1">
+    <main className="page-enter mx-auto max-w-7xl space-y-6 p-6">
+      <header className="section-enter section-delay-1 space-y-1">
         <h1 className="text-2xl font-semibold">Room Search & Allocation</h1>
         <p className="text-sm text-slate-600">
           Filter rooms, inspect occupants, and allocate beds in one click.
@@ -381,17 +381,17 @@ export default function RoomsDashboardClient() {
       </header>
 
       {error ? (
-        <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+        <div className="section-enter section-delay-2 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </div>
       ) : null}
       {message ? (
-        <div className="rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700">
+        <div className="section-enter section-delay-2 rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700">
           {message}
         </div>
       ) : null}
 
-      <section className="glass-panel p-4">
+      <section className="glass-panel section-enter section-delay-2 p-4">
         <h2 className="mb-3 text-lg font-medium">Filters</h2>
         <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-5">
           <Select
@@ -491,7 +491,7 @@ export default function RoomsDashboardClient() {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="section-enter section-delay-3 grid gap-4 lg:grid-cols-2">
         <div className="space-y-3">
           <h2 className="text-lg font-medium">Rooms</h2>
           {rooms.length === 0 ? (

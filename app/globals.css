@@ -42,6 +42,28 @@
   }
 }
 
+@keyframes pageFadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.995);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sectionFadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 :root {
   color-scheme: light;
 }
@@ -242,5 +264,40 @@ body {
     box-shadow:
       0 24px 60px -36px rgba(15, 23, 42, 0.35),
       inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  }
+
+  .page-enter {
+    animation: pageFadeInUp 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .section-enter {
+    opacity: 0;
+    animation: sectionFadeInUp 0.44s cubic-bezier(0.22, 1, 0.36, 1) both;
+    will-change: transform, opacity;
+  }
+
+  .section-delay-1 {
+    animation-delay: 50ms;
+  }
+
+  .section-delay-2 {
+    animation-delay: 100ms;
+  }
+
+  .section-delay-3 {
+    animation-delay: 150ms;
+  }
+
+  .section-delay-4 {
+    animation-delay: 200ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .section-enter {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
 }

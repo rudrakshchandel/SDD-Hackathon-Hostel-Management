@@ -80,15 +80,19 @@ export default async function DashboardPage() {
   return (
     <>
       <TopNav />
-      <main className="mx-auto max-w-6xl space-y-6 p-6">
-        <header>
+      <main className="page-enter mx-auto max-w-7xl space-y-6 p-6">
+        <header className="section-enter section-delay-1">
           <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
           <p className="text-sm text-slate-600">
             Live operational snapshot from hostel data.
           </p>
         </header>
-        <HomeAiAssistant />
-        <DashboardCards stats={stats} />
+        <div className="section-enter section-delay-2">
+          <HomeAiAssistant />
+        </div>
+        <div className="section-enter section-delay-3">
+          <DashboardCards stats={stats} />
+        </div>
       </main>
     </>
   );
