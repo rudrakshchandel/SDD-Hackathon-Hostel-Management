@@ -20,9 +20,9 @@ type DashboardStats = {
 };
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("en-IN", {
     style: "currency",
-    currency: "USD",
+    currency: "INR",
     maximumFractionDigits: 2
   }).format(value);
 }
@@ -43,7 +43,7 @@ function StatCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay }}
-      className="rounded-lg border bg-white p-4 shadow-sm"
+      className="glass-card p-4"
     >
       <p className="text-sm text-slate-500">{title}</p>
       <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>

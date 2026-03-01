@@ -1,6 +1,16 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { api } from "@/lib/api-client";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient
+} from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
+import { FormEvent, ReactNode, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import LiquidLoader from "@/app/components/liquid-loader";
 
 type Bed = {
   id: string;
@@ -43,52 +53,160 @@ type HostelTree = {
   blocks: Block[];
 };
 
-async function api<T>(url: string, method = "GET", body?: unknown): Promise<T> {
-  const response = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload.error || "Request failed");
-  }
-  return payload.data as T;
+const sharingTypeLabels: Record<Room["sharingType"], string> = {
+  SINGLE: "Single",
+  DOUBLE: "Double",
+  TRIPLE: "Triple",
+  DORMITORY: "Dormitory"
+};
+
+const genderRestrictionLabels: Record<Room["genderRestriction"], string> = {
+  ANY: "Any",
+  MALE_ONLY: "Male Only",
+  FEMALE_ONLY: "Female Only"
+};
+
+const roomStatusLabels: Record<Room["status"], string> = {
+  ACTIVE: "Active",
+  MAINTENANCE: "Maintenance",
+  INACTIVE: "Inactive"
+};
+
+const bedStatusLabels: Record<Bed["status"], string> = {
+  AVAILABLE: "Available",
+  OCCUPIED: "Occupied",
+  RESERVED: "Reserved",
+  MAINTENANCE: "Maintenance"
+};
+
+const hostelStatusLabels: Record<HostelTree["status"], string> = {
+  ACTIVE: "Active",
+  INACTIVE: "Inactive"
+};
+
+const actionButtonBaseClass =
+  "h-11 w-full min-w-[8.5rem] rounded-xl px-3 py-2 text-sm font-medium md:w-auto md:justify-self-end";
+const primaryActionClass = `glass-btn-primary ${actionButtonBaseClass}`;
+const secondaryActionClass = `glass-btn-secondary ${actionButtonBaseClass}`;
+const dangerActionClass = `glass-btn-danger ${actionButtonBaseClass}`;
+
+function hasAttr(attributes: Room["attributes"], key: string) {
+  return attributes?.[key] === true;
+}
+
+function collectRoomAttributes(fd: FormData) {
+  return {
+    ac: fd.get("attrAc") === "on",
+    wifi: fd.get("attrWifi") === "on",
+    attachedBath: fd.get("attrAttachedBath") === "on",
+    smokingAllowed: fd.get("attrSmokingAllowed") === "on"
+  };
+}
+
+function RoomAttributeChips({ attributes }: { attributes: Room["attributes"] }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+      <span className="glass-chip">{hasAttr(attributes, "ac") ? "AC" : "Non-AC"}</span>
+      <span className="glass-chip">
+        {hasAttr(attributes, "wifi") ? "Wi-Fi" : "No Wi-Fi"}
+      </span>
+      <span className="glass-chip">
+        {hasAttr(attributes, "attachedBath") ? "Attached Bath" : "Common Bath"}
+      </span>
+      <span className="glass-chip">
+        {hasAttr(attributes, "smokingAllowed") ? "Smoking Allowed" : "No Smoking"}
+      </span>
+    </div>
+  );
+}
+
+type CollapsibleSectionProps = {
+  id: string;
+  title: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  className?: string;
+  summaryClassName?: string;
+};
+
+function CollapsibleSection({
+  id,
+  title,
+  children,
+  defaultOpen = false,
+  className = "glass-card p-3",
+  summaryClassName = "font-medium"
+}: CollapsibleSectionProps) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const contentId = `${id}-content`;
+
+  return (
+    <section className={className}>
+      <button
+        type="button"
+        className={`flex w-full items-center gap-2 text-left ${summaryClassName}`}
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-expanded={isOpen}
+        aria-controls={contentId}
+      >
+        <motion.span
+          aria-hidden
+          className="inline-block text-xs text-slate-600"
+          animate={{ rotate: isOpen ? 90 : 0 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+        >
+          ▶
+        </motion.span>
+        <span>{title}</span>
+      </button>
+      <AnimatePresence initial={false}>
+        {isOpen ? (
+          <motion.div
+            id={contentId}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.24, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
+            {children}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </section>
+  );
 }
 
 export default function HostelConfigClient() {
-  const [hostel, setHostel] = useState<HostelTree | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  async function refresh() {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await api<HostelTree | null>("/api/hostel");
-      setHostel(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
-    } finally {
-      setLoading(false);
+  const queryClient = useQueryClient();
+  const hostelQuery = useQuery({
+    queryKey: ["hostel-config"],
+    queryFn: () => api<HostelTree | null>("/api/hostel")
+  });
+  const hostel = hostelQuery.data ?? null;
+  const actionMutation = useMutation({
+    mutationFn: ({
+      url,
+      method,
+      body
+    }: {
+      url: string;
+      method: string;
+      body?: unknown;
+    }) => api<HostelTree | null>(url, method, body),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["hostel-config"], data);
     }
-  }
+  });
 
-  async function runAction(action: () => Promise<HostelTree | null>, okMsg: string) {
-    setError(null);
+  async function runAction(
+    action: { url: string; method: string; body?: unknown },
+    okMsg: string
+  ) {
     setMessage(null);
-    try {
-      const data = await action();
-      setHostel(data);
-      setMessage(okMsg);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Action failed");
-    }
+    await actionMutation.mutateAsync(action);
+    setMessage(okMsg);
   }
 
   async function submitHostel(e: FormEvent<HTMLFormElement>) {
@@ -103,14 +221,27 @@ export default function HostelConfigClient() {
     };
 
     await runAction(
-      () => api("/api/hostel", hostel ? "PUT" : "POST", payload),
+      {
+        url: "/api/hostel",
+        method: hostel ? "PUT" : "POST",
+        body: payload
+      },
       hostel ? "Hostel profile updated" : "Hostel profile created"
     );
   }
 
-  if (loading) {
-    return <main className="p-6">Loading hostel configuration...</main>;
+  if (hostelQuery.isLoading && !hostelQuery.data) {
+    return (
+      <main className="p-6">
+        <div className="mx-auto flex min-h-[45vh] max-w-4xl items-center justify-center">
+          <LiquidLoader label="Loading hostel configuration..." />
+        </div>
+      </main>
+    );
   }
+  const queryError = hostelQuery.error ?? actionMutation.error ?? null;
+  const error =
+    queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null;
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
@@ -132,51 +263,51 @@ export default function HostelConfigClient() {
         </div>
       ) : null}
 
-      <section className="rounded border p-4">
+      <section className="glass-panel p-4">
         <h2 className="mb-3 text-lg font-medium">Hostel Profile</h2>
         <form className="grid gap-3 md:grid-cols-2" onSubmit={submitHostel}>
-          <input
+          <Input
             required
             name="name"
             placeholder="Hostel name"
             defaultValue={hostel?.name ?? ""}
             className="rounded border px-3 py-2"
           />
-          <input
+          <Input
             required
             name="address"
             placeholder="Address"
             defaultValue={hostel?.address ?? ""}
             className="rounded border px-3 py-2"
           />
-          <input
+          <Input
             name="contactNumber"
             placeholder="Contact number"
             defaultValue={hostel?.contactNumber ?? ""}
             className="rounded border px-3 py-2"
           />
-          <input
+          <Input
             name="timezone"
             placeholder="Timezone (e.g. Asia/Kolkata)"
             defaultValue={hostel?.timezone ?? ""}
             className="rounded border px-3 py-2"
           />
-          <select
+          <Select
             name="status"
             defaultValue={hostel?.status ?? "ACTIVE"}
             className="rounded border px-3 py-2"
           >
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="INACTIVE">INACTIVE</option>
-          </select>
-          <button className="rounded bg-slate-900 px-4 py-2 text-white" type="submit">
+            <option value="ACTIVE">{hostelStatusLabels.ACTIVE}</option>
+            <option value="INACTIVE">{hostelStatusLabels.INACTIVE}</option>
+          </Select>
+          <button className={primaryActionClass} type="submit">
             {hostel ? "Update Hostel" : "Create Hostel"}
           </button>
         </form>
       </section>
 
       {hostel ? (
-        <section className="space-y-3 rounded border p-4">
+        <section className="space-y-3 glass-panel p-4">
           <h2 className="text-lg font-medium">Structure Tree</h2>
           <form
             className="grid gap-2 md:grid-cols-3"
@@ -184,30 +315,37 @@ export default function HostelConfigClient() {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               void runAction(
-                () =>
-                  api("/api/hostel/blocks", "POST", {
+                {
+                  url: "/api/hostel/blocks",
+                  method: "POST",
+                  body: {
                     hostelId: hostel.id,
                     name: String(fd.get("name") || ""),
                     description: String(fd.get("description") || "")
-                  }),
+                  }
+                },
                 "Block added"
               );
               e.currentTarget.reset();
             }}
           >
-            <input required name="name" placeholder="New block name" className="rounded border px-3 py-2" />
-            <input name="description" placeholder="Description" className="rounded border px-3 py-2" />
-            <button className="rounded bg-blue-600 px-3 py-2 text-white" type="submit">
+            <Input required name="name" placeholder="New block name" className="rounded border px-3 py-2" />
+            <Input name="description" placeholder="Description" className="rounded border px-3 py-2" />
+            <button className={primaryActionClass} type="submit">
               Add Block
             </button>
           </form>
 
           <div className="space-y-2">
             {hostel.blocks.map((block) => (
-              <details key={block.id} open className="rounded border p-3">
-                <summary className="cursor-pointer font-medium">
-                  Block: {block.name} ({block.floors.length} floors)
-                </summary>
+              <CollapsibleSection
+                key={block.id}
+                id={`block-${block.id}`}
+                defaultOpen
+                title={`Block: ${block.name} (${block.floors.length} floors)`}
+                className="glass-card p-3"
+                summaryClassName="font-medium"
+              >
                 <div className="mt-3 space-y-3">
                   <form
                     className="grid gap-2 md:grid-cols-4"
@@ -215,35 +353,41 @@ export default function HostelConfigClient() {
                       e.preventDefault();
                       const fd = new FormData(e.currentTarget);
                       void runAction(
-                        () =>
-                          api(`/api/hostel/blocks/${block.id}`, "PUT", {
+                        {
+                          url: `/api/hostel/blocks/${block.id}`,
+                          method: "PUT",
+                          body: {
                             name: String(fd.get("name") || ""),
                             description: String(fd.get("description") || "")
-                          }),
+                          }
+                        },
                         "Block updated"
                       );
                     }}
                   >
-                    <input
+                    <Input
                       required
                       name="name"
                       defaultValue={block.name}
                       className="rounded border px-3 py-2"
                     />
-                    <input
+                    <Input
                       name="description"
                       defaultValue={block.description ?? ""}
                       className="rounded border px-3 py-2"
                     />
-                    <button className="rounded bg-slate-700 px-3 py-2 text-white" type="submit">
+                    <button className={secondaryActionClass} type="submit">
                       Save Block
                     </button>
                     <button
-                      className="rounded bg-red-600 px-3 py-2 text-white"
+                      className={dangerActionClass}
                       type="button"
                       onClick={() =>
                         void runAction(
-                          () => api(`/api/hostel/blocks/${block.id}`, "DELETE"),
+                          {
+                            url: `/api/hostel/blocks/${block.id}`,
+                            method: "DELETE"
+                          },
                           "Block deleted"
                         )
                       }
@@ -253,39 +397,45 @@ export default function HostelConfigClient() {
                   </form>
 
                   <form
-                    className="grid gap-2 md:grid-cols-4"
+                    className="grid gap-2 md:grid-cols-[1fr_1fr_auto]"
                     onSubmit={(e) => {
                       e.preventDefault();
                       const fd = new FormData(e.currentTarget);
                       void runAction(
-                        () =>
-                          api(`/api/hostel/blocks/${block.id}/floors`, "POST", {
+                        {
+                          url: `/api/hostel/blocks/${block.id}/floors`,
+                          method: "POST",
+                          body: {
                             floorNumber: Number(fd.get("floorNumber")),
                             label: String(fd.get("label") || "")
-                          }),
+                          }
+                        },
                         "Floor added"
                       );
                       e.currentTarget.reset();
                     }}
                   >
-                    <input
+                    <Input
                       required
                       type="number"
                       name="floorNumber"
                       placeholder="Floor number"
                       className="rounded border px-3 py-2"
                     />
-                    <input name="label" placeholder="Label" className="rounded border px-3 py-2" />
-                    <button className="rounded bg-blue-600 px-3 py-2 text-white" type="submit">
+                    <Input name="label" placeholder="Label" className="rounded border px-3 py-2" />
+                    <button className={primaryActionClass} type="submit">
                       Add Floor
                     </button>
                   </form>
 
                   {block.floors.map((floor) => (
-                    <details key={floor.id} className="ml-4 rounded border p-3">
-                      <summary className="cursor-pointer text-sm font-medium">
-                        Floor {floor.floorNumber} ({floor.rooms.length} rooms)
-                      </summary>
+                    <CollapsibleSection
+                      key={floor.id}
+                      id={`floor-${floor.id}`}
+                      title={`Floor ${floor.floorNumber} (${floor.rooms.length} rooms)`}
+                      className="ml-4 glass-card p-3"
+                      summaryClassName="text-sm font-medium"
+                    >
                       <div className="mt-3 space-y-3">
                         <form
                           className="grid gap-2 md:grid-cols-4"
@@ -293,36 +443,42 @@ export default function HostelConfigClient() {
                             e.preventDefault();
                             const fd = new FormData(e.currentTarget);
                             void runAction(
-                              () =>
-                                api(`/api/hostel/floors/${floor.id}`, "PUT", {
+                              {
+                                url: `/api/hostel/floors/${floor.id}`,
+                                method: "PUT",
+                                body: {
                                   floorNumber: Number(fd.get("floorNumber")),
                                   label: String(fd.get("label") || "")
-                                }),
+                                }
+                              },
                               "Floor updated"
                             );
                           }}
                         >
-                          <input
+                          <Input
                             required
                             type="number"
                             name="floorNumber"
                             defaultValue={floor.floorNumber}
                             className="rounded border px-3 py-2"
                           />
-                          <input
+                          <Input
                             name="label"
                             defaultValue={floor.label ?? ""}
                             className="rounded border px-3 py-2"
                           />
-                          <button className="rounded bg-slate-700 px-3 py-2 text-white" type="submit">
+                          <button className={secondaryActionClass} type="submit">
                             Save Floor
                           </button>
                           <button
-                            className="rounded bg-red-600 px-3 py-2 text-white"
+                            className={dangerActionClass}
                             type="button"
                             onClick={() =>
                               void runAction(
-                                () => api(`/api/hostel/floors/${floor.id}`, "DELETE"),
+                                {
+                                  url: `/api/hostel/floors/${floor.id}`,
+                                  method: "DELETE"
+                                },
                                 "Floor deleted"
                               )
                             }
@@ -336,147 +492,176 @@ export default function HostelConfigClient() {
                           onSubmit={(e) => {
                             e.preventDefault();
                             const fd = new FormData(e.currentTarget);
-                            let attributes: Record<string, unknown> | null = null;
-                            const rawAttrs = String(fd.get("attributes") || "").trim();
-                            if (rawAttrs) {
-                              try {
-                                attributes = JSON.parse(rawAttrs) as Record<string, unknown>;
-                              } catch {
-                                setError("Room attributes must be valid JSON");
-                                return;
-                              }
-                            }
+                            const attributes = collectRoomAttributes(fd);
                             void runAction(
-                              () =>
-                                api(`/api/hostel/floors/${floor.id}/rooms`, "POST", {
+                              {
+                                url: `/api/hostel/floors/${floor.id}/rooms`,
+                                method: "POST",
+                                body: {
                                   roomNumber: String(fd.get("roomNumber") || ""),
                                   sharingType: String(fd.get("sharingType") || "SINGLE"),
                                   genderRestriction: String(fd.get("genderRestriction") || "ANY"),
                                   status: String(fd.get("status") || "ACTIVE"),
                                   basePrice: String(fd.get("basePrice") || ""),
                                   attributes
-                                }),
+                                }
+                              },
                               "Room added"
                             );
                             e.currentTarget.reset();
                           }}
                         >
-                          <input required name="roomNumber" placeholder="Room no." className="rounded border px-3 py-2" />
-                          <select name="sharingType" className="rounded border px-3 py-2">
-                            <option value="SINGLE">SINGLE</option>
-                            <option value="DOUBLE">DOUBLE</option>
-                            <option value="TRIPLE">TRIPLE</option>
-                            <option value="DORMITORY">DORMITORY</option>
-                          </select>
-                          <input name="basePrice" placeholder="Base price" className="rounded border px-3 py-2" />
-                          <select name="genderRestriction" className="rounded border px-3 py-2">
-                            <option value="ANY">ANY</option>
-                            <option value="MALE_ONLY">MALE_ONLY</option>
-                            <option value="FEMALE_ONLY">FEMALE_ONLY</option>
-                          </select>
-                          <select name="status" className="rounded border px-3 py-2">
-                            <option value="ACTIVE">ACTIVE</option>
-                            <option value="MAINTENANCE">MAINTENANCE</option>
-                            <option value="INACTIVE">INACTIVE</option>
-                          </select>
-                          <button className="rounded bg-blue-600 px-3 py-2 text-white" type="submit">
+                          <Input required name="roomNumber" placeholder="Room no." className="rounded border px-3 py-2" />
+                          <Select name="sharingType" className="rounded border px-3 py-2">
+                            <option value="SINGLE">{sharingTypeLabels.SINGLE}</option>
+                            <option value="DOUBLE">{sharingTypeLabels.DOUBLE}</option>
+                            <option value="TRIPLE">{sharingTypeLabels.TRIPLE}</option>
+                            <option value="DORMITORY">{sharingTypeLabels.DORMITORY}</option>
+                          </Select>
+                          <Input name="basePrice" placeholder="Base price" className="rounded border px-3 py-2" />
+                          <Select name="genderRestriction" className="rounded border px-3 py-2">
+                            <option value="ANY">{genderRestrictionLabels.ANY}</option>
+                            <option value="MALE_ONLY">{genderRestrictionLabels.MALE_ONLY}</option>
+                            <option value="FEMALE_ONLY">{genderRestrictionLabels.FEMALE_ONLY}</option>
+                          </Select>
+                          <Select name="status" className="rounded border px-3 py-2">
+                            <option value="ACTIVE">{roomStatusLabels.ACTIVE}</option>
+                            <option value="MAINTENANCE">{roomStatusLabels.MAINTENANCE}</option>
+                            <option value="INACTIVE">{roomStatusLabels.INACTIVE}</option>
+                          </Select>
+                          <button className={primaryActionClass} type="submit">
                             Add Room
                           </button>
-                          <input
-                            name="attributes"
-                            placeholder='Attributes JSON e.g. {"ac":true}'
-                            className="rounded border px-3 py-2 md:col-span-3"
-                          />
+                          <label className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm">
+                            <input type="checkbox" name="attrAc" /> AC
+                          </label>
+                          <label className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm">
+                            <input type="checkbox" name="attrWifi" /> Wi-Fi
+                          </label>
+                          <label className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm">
+                            <input type="checkbox" name="attrAttachedBath" /> Attached Bath
+                          </label>
+                          <label className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm">
+                            <input type="checkbox" name="attrSmokingAllowed" /> Smoking Allowed
+                          </label>
                         </form>
 
                         {floor.rooms.map((room) => (
-                          <details key={room.id} className="ml-4 rounded border p-3">
-                            <summary className="cursor-pointer text-sm font-medium">
-                              Room {room.roomNumber} ({room.beds.length} beds)
-                            </summary>
+                          <CollapsibleSection
+                            key={room.id}
+                            id={`room-${room.id}`}
+                            title={`Room ${room.roomNumber} (${room.beds.length} beds)`}
+                            className="ml-4 glass-card p-3"
+                            summaryClassName="text-sm font-medium"
+                          >
+                            <RoomAttributeChips attributes={room.attributes} />
                             <div className="mt-3 space-y-3">
                               <form
                                 className="grid gap-2 md:grid-cols-6"
                                 onSubmit={(e) => {
                                   e.preventDefault();
                                   const fd = new FormData(e.currentTarget);
-                                  let attributes: Record<string, unknown> | null = null;
-                                  const rawAttrs = String(fd.get("attributes") || "").trim();
-                                  if (rawAttrs) {
-                                    try {
-                                      attributes = JSON.parse(rawAttrs) as Record<string, unknown>;
-                                    } catch {
-                                      setError("Room attributes must be valid JSON");
-                                      return;
-                                    }
-                                  }
+                                  const attributes = collectRoomAttributes(fd);
                                   void runAction(
-                                    () =>
-                                      api(`/api/hostel/rooms/${room.id}`, "PUT", {
+                                    {
+                                      url: `/api/hostel/rooms/${room.id}`,
+                                      method: "PUT",
+                                      body: {
                                         roomNumber: String(fd.get("roomNumber") || ""),
                                         sharingType: String(fd.get("sharingType") || "SINGLE"),
                                         genderRestriction: String(fd.get("genderRestriction") || "ANY"),
                                         status: String(fd.get("status") || "ACTIVE"),
                                         basePrice: String(fd.get("basePrice") || ""),
                                         attributes
-                                      }),
+                                      }
+                                    },
                                     "Room updated"
                                   );
                                 }}
                               >
-                                <input
+                                <Input
                                   required
                                   name="roomNumber"
                                   defaultValue={room.roomNumber}
                                   className="rounded border px-3 py-2"
                                 />
-                                <select
+                                <Select
                                   name="sharingType"
                                   defaultValue={room.sharingType}
                                   className="rounded border px-3 py-2"
                                 >
-                                  <option value="SINGLE">SINGLE</option>
-                                  <option value="DOUBLE">DOUBLE</option>
-                                  <option value="TRIPLE">TRIPLE</option>
-                                  <option value="DORMITORY">DORMITORY</option>
-                                </select>
-                                <input
+                                  <option value="SINGLE">{sharingTypeLabels.SINGLE}</option>
+                                  <option value="DOUBLE">{sharingTypeLabels.DOUBLE}</option>
+                                  <option value="TRIPLE">{sharingTypeLabels.TRIPLE}</option>
+                                  <option value="DORMITORY">{sharingTypeLabels.DORMITORY}</option>
+                                </Select>
+                                <Input
                                   name="basePrice"
                                   defaultValue={room.basePrice ?? ""}
                                   className="rounded border px-3 py-2"
                                 />
-                                <select
+                                <Select
                                   name="genderRestriction"
                                   defaultValue={room.genderRestriction}
                                   className="rounded border px-3 py-2"
                                 >
-                                  <option value="ANY">ANY</option>
-                                  <option value="MALE_ONLY">MALE_ONLY</option>
-                                  <option value="FEMALE_ONLY">FEMALE_ONLY</option>
-                                </select>
-                                <select
+                                  <option value="ANY">{genderRestrictionLabels.ANY}</option>
+                                  <option value="MALE_ONLY">{genderRestrictionLabels.MALE_ONLY}</option>
+                                  <option value="FEMALE_ONLY">{genderRestrictionLabels.FEMALE_ONLY}</option>
+                                </Select>
+                                <Select
                                   name="status"
                                   defaultValue={room.status}
                                   className="rounded border px-3 py-2"
                                 >
-                                  <option value="ACTIVE">ACTIVE</option>
-                                  <option value="MAINTENANCE">MAINTENANCE</option>
-                                  <option value="INACTIVE">INACTIVE</option>
-                                </select>
-                                <button className="rounded bg-slate-700 px-3 py-2 text-white" type="submit">
+                                  <option value="ACTIVE">{roomStatusLabels.ACTIVE}</option>
+                                  <option value="MAINTENANCE">{roomStatusLabels.MAINTENANCE}</option>
+                                  <option value="INACTIVE">{roomStatusLabels.INACTIVE}</option>
+                                </Select>
+                                <button className={secondaryActionClass} type="submit">
                                   Save Room
                                 </button>
-                                <input
-                                  name="attributes"
-                                  defaultValue={room.attributes ? JSON.stringify(room.attributes) : ""}
-                                  className="rounded border px-3 py-2 md:col-span-3"
-                                />
+                                <label className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    name="attrAc"
+                                    defaultChecked={hasAttr(room.attributes, "ac")}
+                                  />
+                                  AC
+                                </label>
+                                <label className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    name="attrWifi"
+                                    defaultChecked={hasAttr(room.attributes, "wifi")}
+                                  />
+                                  Wi-Fi
+                                </label>
+                                <label className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    name="attrAttachedBath"
+                                    defaultChecked={hasAttr(room.attributes, "attachedBath")}
+                                  />
+                                  Attached Bath
+                                </label>
+                                <label className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    name="attrSmokingAllowed"
+                                    defaultChecked={hasAttr(room.attributes, "smokingAllowed")}
+                                  />
+                                  Smoking Allowed
+                                </label>
                                 <button
-                                  className="rounded bg-red-600 px-3 py-2 text-white"
+                                  className={dangerActionClass}
                                   type="button"
                                   onClick={() =>
                                     void runAction(
-                                      () => api(`/api/hostel/rooms/${room.id}`, "DELETE"),
+                                      {
+                                        url: `/api/hostel/rooms/${room.id}`,
+                                        method: "DELETE"
+                                      },
                                       "Room deleted"
                                     )
                                   }
@@ -486,29 +671,32 @@ export default function HostelConfigClient() {
                               </form>
 
                               <form
-                                className="grid gap-2 md:grid-cols-4"
+                                className="grid gap-2 md:grid-cols-[1fr_1fr_auto]"
                                 onSubmit={(e) => {
                                   e.preventDefault();
                                   const fd = new FormData(e.currentTarget);
                                   void runAction(
-                                    () =>
-                                      api(`/api/hostel/rooms/${room.id}/beds`, "POST", {
+                                    {
+                                      url: `/api/hostel/rooms/${room.id}/beds`,
+                                      method: "POST",
+                                      body: {
                                         bedNumber: String(fd.get("bedNumber") || ""),
                                         status: String(fd.get("status") || "AVAILABLE")
-                                      }),
+                                      }
+                                    },
                                     "Bed added"
                                   );
                                   e.currentTarget.reset();
                                 }}
                               >
-                                <input required name="bedNumber" placeholder="Bed no." className="rounded border px-3 py-2" />
-                                <select name="status" className="rounded border px-3 py-2">
-                                  <option value="AVAILABLE">AVAILABLE</option>
-                                  <option value="OCCUPIED">OCCUPIED</option>
-                                  <option value="RESERVED">RESERVED</option>
-                                  <option value="MAINTENANCE">MAINTENANCE</option>
-                                </select>
-                                <button className="rounded bg-blue-600 px-3 py-2 text-white" type="submit">
+                                <Input required name="bedNumber" placeholder="Bed no." className="rounded border px-3 py-2" />
+                                <Select name="status" className="rounded border px-3 py-2">
+                                  <option value="AVAILABLE">{bedStatusLabels.AVAILABLE}</option>
+                                  <option value="OCCUPIED">{bedStatusLabels.OCCUPIED}</option>
+                                  <option value="RESERVED">{bedStatusLabels.RESERVED}</option>
+                                  <option value="MAINTENANCE">{bedStatusLabels.MAINTENANCE}</option>
+                                </Select>
+                                <button className={primaryActionClass} type="submit">
                                   Add Bed
                                 </button>
                               </form>
@@ -517,45 +705,51 @@ export default function HostelConfigClient() {
                                 {room.beds.map((bed) => (
                                   <form
                                     key={bed.id}
-                                    className="grid gap-2 rounded border p-2 md:grid-cols-4"
+                                    className="grid gap-2 glass-card p-2 md:grid-cols-4"
                                     onSubmit={(e) => {
                                       e.preventDefault();
                                       const fd = new FormData(e.currentTarget);
                                       void runAction(
-                                        () =>
-                                          api(`/api/hostel/beds/${bed.id}`, "PUT", {
+                                        {
+                                          url: `/api/hostel/beds/${bed.id}`,
+                                          method: "PUT",
+                                          body: {
                                             bedNumber: String(fd.get("bedNumber") || ""),
                                             status: String(fd.get("status") || "AVAILABLE")
-                                          }),
+                                          }
+                                        },
                                         "Bed updated"
                                       );
                                     }}
                                   >
-                                    <input
+                                    <Input
                                       required
                                       name="bedNumber"
                                       defaultValue={bed.bedNumber}
                                       className="rounded border px-3 py-2"
                                     />
-                                    <select
+                                    <Select
                                       name="status"
                                       defaultValue={bed.status}
                                       className="rounded border px-3 py-2"
                                     >
-                                      <option value="AVAILABLE">AVAILABLE</option>
-                                      <option value="OCCUPIED">OCCUPIED</option>
-                                      <option value="RESERVED">RESERVED</option>
-                                      <option value="MAINTENANCE">MAINTENANCE</option>
-                                    </select>
-                                    <button className="rounded bg-slate-700 px-3 py-2 text-white" type="submit">
+                                      <option value="AVAILABLE">{bedStatusLabels.AVAILABLE}</option>
+                                      <option value="OCCUPIED">{bedStatusLabels.OCCUPIED}</option>
+                                      <option value="RESERVED">{bedStatusLabels.RESERVED}</option>
+                                      <option value="MAINTENANCE">{bedStatusLabels.MAINTENANCE}</option>
+                                    </Select>
+                                    <button className={secondaryActionClass} type="submit">
                                       Save Bed
                                     </button>
                                     <button
-                                      className="rounded bg-red-600 px-3 py-2 text-white"
+                                      className={dangerActionClass}
                                       type="button"
                                       onClick={() =>
                                         void runAction(
-                                          () => api(`/api/hostel/beds/${bed.id}`, "DELETE"),
+                                          {
+                                            url: `/api/hostel/beds/${bed.id}`,
+                                            method: "DELETE"
+                                          },
                                           "Bed deleted"
                                         )
                                       }
@@ -566,13 +760,13 @@ export default function HostelConfigClient() {
                                 ))}
                               </div>
                             </div>
-                          </details>
+                          </CollapsibleSection>
                         ))}
                       </div>
-                    </details>
+                    </CollapsibleSection>
                   ))}
                 </div>
-              </details>
+              </CollapsibleSection>
             ))}
           </div>
         </section>
@@ -580,3 +774,4 @@ export default function HostelConfigClient() {
     </main>
   );
 }
+

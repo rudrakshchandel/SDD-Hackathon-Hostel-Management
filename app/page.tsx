@@ -1,7 +1,12 @@
-export default function HomePage() {
-  return (
-    <main className="flex min-h-screen items-center justify-center p-6">
-      <h1 className="text-2xl font-semibold">Hostel Management App</h1>
-    </main>
-  );
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authEnabled, authOptions } from "@/lib/auth";
+
+export default async function HomePage() {
+  if (!authEnabled) {
+    redirect("/dashboard");
+  }
+
+  const session = await getServerSession(authOptions);
+  redirect(session ? "/dashboard" : "/login");
 }

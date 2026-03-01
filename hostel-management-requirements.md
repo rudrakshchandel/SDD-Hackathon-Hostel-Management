@@ -13,6 +13,7 @@
 - Phase 1 supports a single Admin/Owner role only.
 - System is web-based and accessed by the Admin/Owner.
 - Payment gateway integration is not required in Phase 1 (TODO: confirm future needs).
+- Frontend implementation standard for Phase 1 uses Tailwind CSS, TanStack Query for server-state/data fetching, and a reusable component system based on shadcn/ui.
 
 ### Phase 1 Scope (Admin Only)
 - Admin authentication, hostel configuration, resident management, fee management, complaints, notices, dashboard, reporting, and audit logs.
@@ -129,6 +130,8 @@
 - NFR-003: The system should respond to standard admin actions within 2 seconds under normal load.
 - NFR-004: The system must provide auditability for all critical actions.
 - NFR-005: The system must store personal data securely and comply with applicable privacy policies (TODO: define).
+- NFR-006: The frontend UI layer must be built on reusable components derived from shadcn/ui primitives.
+- NFR-007: The visual style must follow an Apple-like liquid glass direction (translucent surfaces, blur layers, soft borders, subtle gradients, and restrained motion) while preserving readability and accessibility.
 
 ## 6) High-Level Data Model
 ### Key Entities and Fields (High-Level)

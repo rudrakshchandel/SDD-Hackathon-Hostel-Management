@@ -1,6 +1,15 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { api } from "@/lib/api-client";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient
+} from "@tanstack/react-query";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import LiquidLoader from "@/app/components/liquid-loader";
 
 type RoomListItem = {
   id: string;
@@ -93,17 +102,157 @@ const defaultFilters: Filters = {
   availability: "vacant"
 };
 
-async function api<T>(url: string, method = "GET", body?: unknown): Promise<T> {
-  const response = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload.error || "Request failed");
+type FeatureState = boolean | null;
+
+const roomTypeLabels: Record<string, string> = {
+  SINGLE: "Single",
+  DOUBLE: "Double",
+  TRIPLE: "Triple",
+  DORMITORY: "Dormitory"
+};
+
+const genderRestrictionLabels: Record<string, string> = {
+  ANY: "Any",
+  MALE_ONLY: "Male Only",
+  FEMALE_ONLY: "Female Only"
+};
+
+const statusLabels: Record<string, string> = {
+  ACTIVE: "Active",
+  MAINTENANCE: "Maintenance",
+  INACTIVE: "Inactive",
+  AVAILABLE: "Available",
+  OCCUPIED: "Occupied",
+  RESERVED: "Reserved"
+};
+
+function labelFor(
+  value: string,
+  dictionary: Record<string, string>,
+  fallback = value
+) {
+  return dictionary[value] ?? fallback;
+}
+
+function formatInr(value: number | null) {
+  if (value === null) return "N/A";
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0
+  }).format(value);
+}
+
+function readFeatureState(
+  attributes: Record<string, unknown> | null,
+  key: string
+): FeatureState {
+  const value = attributes?.[key];
+  return typeof value === "boolean" ? value : null;
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden>
+      <path
+        d="M5 10.5L8.2 13.5L15 6.8"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden>
+      <path
+        d="M6 6L14 14M14 6L6 14"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function QuestionIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden>
+      <path
+        d="M7.8 7.4A2.5 2.5 0 0 1 12.2 9c0 1.8-2.2 1.9-2.2 3.6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <circle cx="10" cy="14.5" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function FeatureBadge({
+  state,
+  whenTrue,
+  whenFalse,
+  whenUnknown
+}: {
+  state: FeatureState;
+  whenTrue: string;
+  whenFalse: string;
+  whenUnknown: string;
+}) {
+  if (state === true) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/60 bg-emerald-100/70 px-2 py-1 text-xs text-emerald-800">
+        <CheckIcon />
+        {whenTrue}
+      </span>
+    );
   }
-  return payload.data as T;
+
+  if (state === false) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-rose-300/60 bg-rose-100/70 px-2 py-1 text-xs text-rose-800">
+        <XIcon />
+        {whenFalse}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-slate-300/60 bg-slate-100/70 px-2 py-1 text-xs text-slate-700">
+      <QuestionIcon />
+      {whenUnknown}
+    </span>
+  );
+}
+
+function RoomFeatureBadges({
+  attributes
+}: {
+  attributes: Record<string, unknown> | null;
+}) {
+  const ac = readFeatureState(attributes, "ac");
+  const smoking = readFeatureState(attributes, "smokingAllowed");
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      <FeatureBadge
+        state={ac}
+        whenTrue="AC"
+        whenFalse="Non-AC"
+        whenUnknown="AC Unknown"
+      />
+      <FeatureBadge
+        state={smoking}
+        whenTrue="Smoking Allowed"
+        whenFalse="No Smoking"
+        whenUnknown="Smoking Unknown"
+      />
+    </div>
+  );
 }
 
 function filtersToQuery(filters: Filters) {
@@ -116,87 +265,93 @@ function filtersToQuery(filters: Filters) {
 
 export default function RoomsDashboardClient() {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
-  const [rooms, setRooms] = useState<RoomListItem[]>([]);
-  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    blocks: [],
-    floors: []
-  });
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
-  const [selectedRoom, setSelectedRoom] = useState<RoomDetail | null>(null);
-  const [residents, setResidents] = useState<Resident[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [allocatingBedId, setAllocatingBedId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const query = useMemo(() => filtersToQuery(filters), [filters]);
 
-  const loadRooms = useCallback(async (showLoader = true) => {
-    if (showLoader) setLoading(true);
-    setError(null);
-    try {
-      const query = filtersToQuery(filters);
-      const data = await api<RoomsApiResponse>(`/api/rooms?${query}`);
-      setRooms(data.rooms);
-      setFilterOptions(data.filterOptions);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load rooms");
-    } finally {
-      if (showLoader) setLoading(false);
-    }
-  }, [filters]);
+  const roomsQuery = useQuery({
+    queryKey: ["rooms", query],
+    queryFn: () => api<RoomsApiResponse>(`/api/rooms?${query}`),
+    refetchInterval: 10_000
+  });
 
-  const loadRoomDetail = useCallback(async (roomId: string, showError = true) => {
-    try {
-      const data = await api<RoomDetail>(`/api/rooms/${roomId}`);
-      setSelectedRoom(data);
-    } catch (err) {
-      if (showError) {
-        setError(err instanceof Error ? err.message : "Failed to load room");
-      }
-      setSelectedRoom(null);
-    }
-  }, []);
+  const residentsQuery = useQuery({
+    queryKey: ["residents"],
+    queryFn: () => api<Resident[]>("/api/residents"),
+    refetchInterval: 30_000
+  });
 
-  const loadResidents = useCallback(async () => {
-    try {
-      const data = await api<Resident[]>("/api/residents");
-      setResidents(data);
-    } catch {
-      setResidents([]);
-    }
-  }, []);
+  const roomDetailQuery = useQuery({
+    queryKey: ["room-detail", selectedRoomId],
+    queryFn: () => api<RoomDetail>(`/api/rooms/${selectedRoomId}`),
+    enabled: Boolean(selectedRoomId),
+    refetchInterval: selectedRoomId ? 10_000 : false
+  });
 
   useEffect(() => {
-    void loadResidents();
-  }, [loadResidents]);
+    if (!selectedRoomId || !roomsQuery.data) return;
+    const selectedStillVisible = roomsQuery.data.rooms.some(
+      (room) => room.id === selectedRoomId
+    );
+    if (!selectedStillVisible) {
+      setSelectedRoomId(null);
+    }
+  }, [selectedRoomId, roomsQuery.data]);
 
-  useEffect(() => {
-    void loadRooms();
-    const interval = setInterval(() => {
-      void loadRooms(false);
-      if (selectedRoomId) {
-        void loadRoomDetail(selectedRoomId, false);
-      }
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [loadRoomDetail, loadRooms, selectedRoomId]);
+  const allocateMutation = useMutation({
+    mutationFn: ({
+      bedId,
+      payload
+    }: {
+      bedId: string;
+      payload: { residentId?: string; resident?: Record<string, string> };
+    }) => api("/api/residents/allocate", "POST", { bedId, ...payload }),
+    onSuccess: async () => {
+      setMessage("Bed allocated successfully");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["rooms"] }),
+        queryClient.invalidateQueries({ queryKey: ["residents"] }),
+        selectedRoomId
+          ? queryClient.invalidateQueries({
+              queryKey: ["room-detail", selectedRoomId]
+            })
+          : Promise.resolve()
+      ]);
+    }
+  });
 
   async function allocate(
     bedId: string,
     payload: { residentId?: string; resident?: Record<string, string> }
   ) {
-    setError(null);
     setMessage(null);
-    setAllocatingBedId(bedId);
     try {
-      await api("/api/residents/allocate", "POST", { bedId, ...payload });
-      setMessage("Bed allocated successfully");
-      await Promise.all([loadRooms(false), selectedRoomId ? loadRoomDetail(selectedRoomId, false) : Promise.resolve(), loadResidents()]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Allocation failed");
-    } finally {
-      setAllocatingBedId(null);
+      await allocateMutation.mutateAsync({ bedId, payload });
+    } catch {
+      // Error state is surfaced through `allocateMutation.error`.
     }
   }
+
+  const filterOptions = roomsQuery.data?.filterOptions ?? {
+    blocks: [],
+    floors: []
+  };
+  const rooms = roomsQuery.data?.rooms ?? [];
+  const selectedRoom = roomDetailQuery.data ?? null;
+  const residents = residentsQuery.data ?? [];
+  const allocatingBedId =
+    allocateMutation.isPending && allocateMutation.variables
+      ? allocateMutation.variables.bedId
+      : null;
+  const pageError =
+    roomsQuery.error ??
+    roomDetailQuery.error ??
+    residentsQuery.error ??
+    allocateMutation.error ??
+    null;
+  const error =
+    pageError instanceof Error ? pageError.message : pageError ? String(pageError) : null;
 
   const visibleFloors = useMemo(
     () =>
@@ -206,8 +361,14 @@ export default function RoomsDashboardClient() {
     [filterOptions.floors, filters.blockId]
   );
 
-  if (loading) {
-    return <main className="p-6">Loading rooms...</main>;
+  if (roomsQuery.isLoading && !roomsQuery.data) {
+    return (
+      <main className="p-6 text-slate-700">
+        <div className="mx-auto flex min-h-[45vh] max-w-4xl items-center justify-center">
+          <LiquidLoader label="Loading rooms..." />
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -230,21 +391,21 @@ export default function RoomsDashboardClient() {
         </div>
       ) : null}
 
-      <section className="rounded border p-4">
+      <section className="glass-panel p-4">
         <h2 className="mb-3 text-lg font-medium">Filters</h2>
         <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-5">
-          <select
+          <Select
             className="rounded border px-3 py-2"
             value={filters.sharingType}
             onChange={(e) => setFilters((p) => ({ ...p, sharingType: e.target.value }))}
           >
             <option value="">Sharing Type (All)</option>
-            <option value="SINGLE">SINGLE</option>
-            <option value="DOUBLE">DOUBLE</option>
-            <option value="TRIPLE">TRIPLE</option>
-            <option value="DORMITORY">DORMITORY</option>
-          </select>
-          <select
+            <option value="SINGLE">{labelFor("SINGLE", roomTypeLabels)}</option>
+            <option value="DOUBLE">{labelFor("DOUBLE", roomTypeLabels)}</option>
+            <option value="TRIPLE">{labelFor("TRIPLE", roomTypeLabels)}</option>
+            <option value="DORMITORY">{labelFor("DORMITORY", roomTypeLabels)}</option>
+          </Select>
+          <Select
             className="rounded border px-3 py-2"
             value={filters.blockId}
             onChange={(e) =>
@@ -257,8 +418,8 @@ export default function RoomsDashboardClient() {
                 {b.name}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             className="rounded border px-3 py-2"
             value={filters.floorId}
             onChange={(e) => setFilters((p) => ({ ...p, floorId: e.target.value }))}
@@ -269,8 +430,8 @@ export default function RoomsDashboardClient() {
                 {f.block.name} - Floor {f.floorNumber}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             className="rounded border px-3 py-2"
             value={filters.ac}
             onChange={(e) => setFilters((p) => ({ ...p, ac: e.target.value }))}
@@ -278,8 +439,8 @@ export default function RoomsDashboardClient() {
             <option value="any">AC/Non-AC (All)</option>
             <option value="true">AC</option>
             <option value="false">Non-AC</option>
-          </select>
-          <select
+          </Select>
+          <Select
             className="rounded border px-3 py-2"
             value={filters.smoking}
             onChange={(e) => setFilters((p) => ({ ...p, smoking: e.target.value }))}
@@ -287,8 +448,8 @@ export default function RoomsDashboardClient() {
             <option value="any">Smoking (All)</option>
             <option value="true">Smoking Allowed</option>
             <option value="false">No Smoking</option>
-          </select>
-          <select
+          </Select>
+          <Select
             className="rounded border px-3 py-2"
             value={filters.gender}
             onChange={(e) => setFilters((p) => ({ ...p, gender: e.target.value }))}
@@ -296,20 +457,20 @@ export default function RoomsDashboardClient() {
             <option value="ANY">Gender (All)</option>
             <option value="MALE">Male Compatible</option>
             <option value="FEMALE">Female Compatible</option>
-          </select>
-          <input
+          </Select>
+          <Input
             className="rounded border px-3 py-2"
-            placeholder="Min price"
+            placeholder="Min price (₹)"
             value={filters.minPrice}
             onChange={(e) => setFilters((p) => ({ ...p, minPrice: e.target.value }))}
           />
-          <input
+          <Input
             className="rounded border px-3 py-2"
-            placeholder="Max price"
+            placeholder="Max price (₹)"
             value={filters.maxPrice}
             onChange={(e) => setFilters((p) => ({ ...p, maxPrice: e.target.value }))}
           />
-          <select
+          <Select
             className="rounded border px-3 py-2"
             value={filters.availability}
             onChange={(e) =>
@@ -319,10 +480,10 @@ export default function RoomsDashboardClient() {
             <option value="vacant">Available Beds</option>
             <option value="full">Fully Occupied</option>
             <option value="all">All Rooms</option>
-          </select>
+          </Select>
           <button
             type="button"
-            className="rounded bg-slate-900 px-3 py-2 text-white"
+            className="glass-btn-primary rounded-xl px-3 py-2"
             onClick={() => setFilters(defaultFilters)}
           >
             Reset
@@ -334,18 +495,15 @@ export default function RoomsDashboardClient() {
         <div className="space-y-3">
           <h2 className="text-lg font-medium">Rooms</h2>
           {rooms.length === 0 ? (
-            <p className="rounded border p-3 text-sm text-slate-600">No rooms matched.</p>
+            <p className="glass-card p-3 text-sm text-slate-600">No rooms matched.</p>
           ) : null}
           {rooms.map((room) => (
             <button
               key={room.id}
               type="button"
-              onClick={() => {
-                setSelectedRoomId(room.id);
-                void loadRoomDetail(room.id);
-              }}
-              className={`w-full rounded border p-4 text-left ${
-                selectedRoomId === room.id ? "border-blue-500 bg-blue-50" : ""
+              onClick={() => setSelectedRoomId(room.id)}
+              className={`glass-card w-full p-4 text-left ${
+                selectedRoomId === room.id ? "ring-2 ring-sky-300" : ""
               }`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -354,32 +512,33 @@ export default function RoomsDashboardClient() {
                     Room {room.roomNumber} - {room.block.name}/F{room.floor.floorNumber}
                   </p>
                   <p className="text-sm text-slate-600">
-                    {room.sharingType} | Gender: {room.genderRestriction} | Price:{" "}
-                    {room.basePrice ?? "N/A"}
+                    {labelFor(room.sharingType, roomTypeLabels)} | Gender:{" "}
+                    {labelFor(room.genderRestriction, genderRestrictionLabels)} | Price:{" "}
+                    {formatInr(room.basePrice)}
                   </p>
                 </div>
-                <span className="rounded bg-slate-100 px-2 py-1 text-xs">{room.status}</span>
+                <span className="glass-chip">{labelFor(room.status, statusLabels)}</span>
               </div>
               <div className="mt-2 text-sm">
                 Beds: Total <b>{room.counts.totalBeds}</b> | Occupied{" "}
                 <b>{room.counts.occupiedBeds}</b> | Vacant <b>{room.counts.vacantBeds}</b>
               </div>
-              <div className="mt-1 text-xs text-slate-600">
-                AC: {String((room.attributes?.ac as boolean | undefined) ?? "NA")} | Smoking:{" "}
-                {String((room.attributes?.smokingAllowed as boolean | undefined) ?? "NA")}
-              </div>
+              <RoomFeatureBadges attributes={room.attributes} />
             </button>
           ))}
         </div>
 
         <div className="space-y-3">
           <h2 className="text-lg font-medium">Room Details & Occupants</h2>
+          {selectedRoomId && roomDetailQuery.isLoading && !selectedRoom ? (
+            <LiquidLoader label="Loading room details..." compact />
+          ) : null}
           {!selectedRoom ? (
-            <p className="rounded border p-3 text-sm text-slate-600">
+            <p className="glass-card p-3 text-sm text-slate-600">
               Select a room to view occupants and allocate beds.
             </p>
           ) : (
-            <div className="space-y-3 rounded border p-4">
+            <div className="glass-panel space-y-3 p-4">
               <div>
                 <p className="font-medium">
                   Room {selectedRoom.roomNumber} - {selectedRoom.block.name}/F
@@ -389,10 +548,11 @@ export default function RoomsDashboardClient() {
                   Total {selectedRoom.counts.totalBeds} | Occupied{" "}
                   {selectedRoom.counts.occupiedBeds} | Vacant {selectedRoom.counts.vacantBeds}
                 </p>
+                <RoomFeatureBadges attributes={selectedRoom.attributes} />
               </div>
 
               {selectedRoom.beds.map((bed) => (
-                <div key={bed.id} className="rounded border p-3">
+                <div key={bed.id} className="glass-card p-3">
                   <p className="font-medium">
                     Bed {bed.bedNumber} - {bed.occupied ? "Occupied" : "Vacant"}
                   </p>
@@ -400,7 +560,13 @@ export default function RoomsDashboardClient() {
                     <ul className="mt-2 space-y-1 text-sm">
                       {bed.occupants.map((o) => (
                         <li key={o.allocationId}>
-                          {o.resident.fullName} ({o.resident.gender}) {o.resident.contact ? `- ${o.resident.contact}` : ""}
+                          {o.resident.fullName} (
+                          {labelFor(o.resident.gender, {
+                            MALE: "Male",
+                            FEMALE: "Female",
+                            OTHER: "Other"
+                          })}
+                          ) {o.resident.contact ? `- ${o.resident.contact}` : ""}
                         </li>
                       ))}
                     </ul>
@@ -435,7 +601,8 @@ function AllocateForm({
 
   async function submitNewResident(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
     await onSubmit({
       resident: {
         fullName: String(fd.get("fullName") || ""),
@@ -444,7 +611,7 @@ function AllocateForm({
         email: String(fd.get("email") || "")
       }
     });
-    e.currentTarget.reset();
+    form.reset();
   }
 
   return (
@@ -452,14 +619,14 @@ function AllocateForm({
       <div className="flex gap-2">
         <button
           type="button"
-          className={`rounded border px-2 py-1 ${mode === "existing" ? "bg-slate-900 text-white" : ""}`}
+          className={`rounded-xl px-2 py-1 ${mode === "existing" ? "glass-btn-primary" : ""}`}
           onClick={() => setMode("existing")}
         >
           Existing Resident
         </button>
         <button
           type="button"
-          className={`rounded border px-2 py-1 ${mode === "new" ? "bg-slate-900 text-white" : ""}`}
+          className={`rounded-xl px-2 py-1 ${mode === "new" ? "glass-btn-primary" : ""}`}
           onClick={() => setMode("new")}
         >
           New Resident
@@ -468,7 +635,7 @@ function AllocateForm({
 
       {mode === "existing" ? (
         <div className="flex gap-2">
-          <select
+          <Select
             className="w-full rounded border px-3 py-2"
             value={residentId}
             onChange={(e) => setResidentId(e.target.value)}
@@ -476,13 +643,14 @@ function AllocateForm({
             <option value="">Select resident</option>
             {residents.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.fullName} ({r.gender}) - {r.status}
+                {r.fullName} ({labelFor(r.gender, { MALE: "Male", FEMALE: "Female", OTHER: "Other" })}) -{" "}
+                {labelFor(r.status, statusLabels)}
               </option>
             ))}
-          </select>
+          </Select>
           <button
             type="button"
-            className="rounded bg-blue-600 px-3 py-2 text-white disabled:opacity-50"
+            className="glass-btn-primary rounded-xl px-3 py-2 disabled:opacity-50"
             disabled={!residentId || loading}
             onClick={() => onSubmit({ residentId })}
           >
@@ -491,18 +659,18 @@ function AllocateForm({
         </div>
       ) : (
         <form className="grid gap-2 md:grid-cols-2" onSubmit={submitNewResident}>
-          <input required name="fullName" placeholder="Full name" className="rounded border px-3 py-2" />
-          <select required name="gender" className="rounded border px-3 py-2">
+          <Input required name="fullName" placeholder="Full name" className="rounded border px-3 py-2" />
+          <Select required name="gender" className="rounded border px-3 py-2">
             <option value="">Gender</option>
-            <option value="MALE">MALE</option>
-            <option value="FEMALE">FEMALE</option>
-            <option value="OTHER">OTHER</option>
-          </select>
-          <input name="contact" placeholder="Contact" className="rounded border px-3 py-2" />
-          <input name="email" placeholder="Email" className="rounded border px-3 py-2" />
+            <option value="MALE">Male</option>
+            <option value="FEMALE">Female</option>
+            <option value="OTHER">Other</option>
+          </Select>
+          <Input name="contact" placeholder="Contact" className="rounded border px-3 py-2" />
+          <Input name="email" placeholder="Email" className="rounded border px-3 py-2" />
           <button
             type="submit"
-            className="rounded bg-blue-600 px-3 py-2 text-white disabled:opacity-50 md:col-span-2"
+            className="glass-btn-primary rounded-xl px-3 py-2 disabled:opacity-50 md:col-span-2"
             disabled={loading}
           >
             {loading ? "Allocating..." : "Create + Allocate"}

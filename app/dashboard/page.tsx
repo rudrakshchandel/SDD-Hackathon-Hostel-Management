@@ -1,12 +1,14 @@
-import DashboardCards from "./dashboard-cards";
+import DashboardCards from "../(dashboard)/dashboard-cards";
 import { prisma } from "@/lib/prisma";
+import TopNav from "@/app/components/top-nav";
+import HomeAiAssistant from "./home-ai-assistant";
 
 function toNumber(value: unknown) {
   if (value === null || value === undefined) return 0;
   return Number(value);
 }
 
-export default async function AdminDashboardPage() {
+export default async function DashboardPage() {
   const [
     totalBeds,
     occupiedBedRows,
@@ -43,12 +45,7 @@ export default async function AdminDashboardPage() {
     prisma.invoice.count({
       where: {
         status: {
-          in: [
-            "DRAFT",
-            "ISSUED",
-            "PARTIALLY_PAID",
-            "OVERDUE"
-          ]
+          in: ["DRAFT", "ISSUED", "PARTIALLY_PAID", "OVERDUE"]
         }
       }
     })
@@ -81,14 +78,18 @@ export default async function AdminDashboardPage() {
   };
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 p-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
-        <p className="text-sm text-slate-600">
-          Live operational snapshot from hostel data.
-        </p>
-      </header>
-      <DashboardCards stats={stats} />
-    </main>
+    <>
+      <TopNav />
+      <main className="mx-auto max-w-6xl space-y-6 p-6">
+        <header>
+          <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
+          <p className="text-sm text-slate-600">
+            Live operational snapshot from hostel data.
+          </p>
+        </header>
+        <HomeAiAssistant />
+        <DashboardCards stats={stats} />
+      </main>
+    </>
   );
 }
