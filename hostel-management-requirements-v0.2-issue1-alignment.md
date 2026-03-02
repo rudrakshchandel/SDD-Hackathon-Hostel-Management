@@ -139,7 +139,7 @@ Note: This is a design-system directive, not a business requirement. Keep it in 
 - https://github.com/rudrakshchandel/SDD-Hackathon-Hostel-Management/issues/11
 - https://github.com/rudrakshchandel/SDD-Hackathon-Hostel-Management/issues/12
 
-## 7) Implementation Alignment Snapshot (As of 2026-02-28)
+## 7) Implementation Alignment Snapshot (As of 2026-03-02)
 
 ### Method
 - This status is based on current code present in this repository branch (API routes, dashboard pages, Prisma schema, and UI files).
@@ -153,44 +153,43 @@ Note: This is a design-system directive, not a business requirement. Keep it in 
 | Issue | Task | Status | Notes |
 | --- | --- | --- | --- |
 | #2 | Task 0: Project setup | Implemented | Next.js 14 + TS + Tailwind + Prisma + deps present; `.env.example` exists. |
-| #3 | Task 0.5: UI glass component library | Not Implemented | `components/ui/` only has `.gitkeep`; no Card/Button/Input/etc. |
+| #3 | Task 0.5: UI glass component library | Partial | Shared `Input`, `Select`, and `Button` primitives are in use; broader shadcn parity still pending. |
 | #4 | Task 1: Prisma schema | Implemented | Models + enums + relations are present, including `Allocation`. |
-| #5 | Task 2: Auth (NextAuth + Google + protected routes) | Not Implemented | No `/api/auth` route, no login page, no `middleware.ts`. |
+| #5 | Task 2: Auth (NextAuth + Google + protected routes) | Implemented | `/api/auth/[...nextauth]`, `/login`, and `middleware.ts` protected routes are present (`AUTH_ENABLED` gated). |
 | #6 | Task 3: Hostel config CRUD | Implemented | Hostel/Block/Floor/Room/Bed CRUD APIs + dashboard UI + active-resident delete guards. |
-| #7 | Task 4: Room discovery + resident management | Partial | Search/filter + room detail + allocate implemented; transfer/vacate flows missing; FR-018 filters not fully complete. |
+| #7 | Task 4: Room discovery + resident management | Implemented | Search/filter + room detail + allocate + transfer + vacate flows implemented. |
 | #8 | Task 5: Dashboard | Implemented | Occupancy/revenue/dues/complaints aggregates and dashboard cards implemented. |
-| #9 | Task 6: Fee management | Not Implemented | Schema exists, but no fees/invoices/payments API or UI found. |
-| #10 | Task 7: Complaint tracking | Not Implemented | Schema exists, but no complaint lifecycle API/UI found. |
-| #11 | Task 8: Slack bot | Not Implemented | No `/api/slack` or Slack integration code found. |
-| #12 | Task 9: Notices + reporting | Not Implemented | Schema exists, but no notices/reporting API/UI/CSV export found. |
+| #9 | Task 6: Fee management | Partial | Fee APIs exist (`/api/fees`, `/api/fees/[feeId]/payments`) and revenue hierarchy UI exists; full dedicated fee CRUD UX remains open. |
+| #10 | Task 7: Complaint tracking | Partial | Complaint APIs exist (`/api/complaints`, `/api/complaints/[complaintId]`); full admin workflow UI remains open. |
+| #11 | Task 8: Slack bot | Partial | Slack command/events routes + signature verification + feature flag are implemented; command breadth can still expand. |
+| #12 | Task 9: Notices + reporting | Partial | Notices APIs and CSV export route (`/api/reports/fees`) are implemented; dedicated notices UI remains open. |
 
 ### Requirement Coverage Snapshot
 
 | Requirement Range | Area | Status | Notes |
 | --- | --- | --- | --- |
-| FR-001 to FR-004 | Authentication | Not Implemented (v0.1 semantics) | No auth flows currently implemented in code. |
+| FR-001 to FR-004 | Authentication | Partial (v0.2 OAuth-first path) | NextAuth login/session protection is implemented behind `AUTH_ENABLED`; local-password semantics remain intentionally deferred. |
 | FR-005 to FR-010 | Hostel configuration | Implemented | CRUD + deletion constraints with active resident checks are present. |
-| FR-011 to FR-016 | Resident management | Partial | Add resident + allocate supported; transfer/vacate lifecycle not yet present. |
-| FR-017 to FR-022 | Room discovery/allocation | Partial | Core discovery + occupancy + room detail + bed allocation implemented. |
+| FR-011 to FR-016 | Resident management | Implemented | Add resident + allocate + transfer + vacate lifecycle are implemented in APIs/UI. |
+| FR-017 to FR-022 | Room discovery/allocation | Implemented | Discovery + occupancy + room detail + allocation lifecycle implemented. |
 | FR-023 to FR-025 | Room attributes | Implemented | Attributes stored as JSON and configurable in CRUD UI/API. |
 | FR-026 to FR-028 | Allocation constraints | Partial | Bed availability + gender checks implemented; policy-attribute validation is not fully implemented. |
-| FR-029 to FR-035 | Fee management | Not Implemented | No module APIs/pages yet. |
-| FR-036 to FR-039 | Complaints | Not Implemented | Dashboard reads complaint counts only; lifecycle module missing. |
-| FR-040 to FR-042 | Notices | Not Implemented | No notices API/pages yet. |
+| FR-029 to FR-035 | Fee management | Partial | Fee and payment APIs are implemented; UI workflow is not yet full-feature complete. |
+| FR-036 to FR-039 | Complaints | Partial | Complaint lifecycle APIs implemented; dedicated UI workflow still partial. |
+| FR-040 to FR-042 | Notices | Partial | Notices APIs implemented; UI module for notice authoring/publishing still open. |
 | FR-043 to FR-046 | Dashboard | Implemented | All four summary metrics are coded. |
-| FR-047 to FR-048 | Reporting CSV | Not Implemented | No CSV export routes/buttons found. |
+| FR-047 to FR-048 | Reporting CSV | Partial | CSV export route implemented (`/api/reports/fees`); broader reporting set still pending. |
 | FR-049 to FR-050 | Audit logs | Not Implemented / Deferred | No audit log module found; aligned with deferred scope proposal. |
-| FR-051 to FR-055 | Slack commands (v0.2 added) | Not Implemented | No Slack command handling code found. |
+| FR-051 to FR-055 | Slack commands (v0.2 added) | Partial | Slack command/event handling implemented with feature flag and signature checks; coverage can be expanded further. |
 | NFR-006 to NFR-009 | Mobile responsiveness | Partial | Breakpoint-based responsive classes exist on core pages, but no explicit mobile UX pass or verification matrix is implemented/documented yet. |
-| NFR-010 to NFR-011 | UI component system + liquid glass design | Not Implemented | `components/ui/` does not yet contain a built shadcn-based component library or finalized Apple-like liquid glass theme layer. |
+| NFR-010 to NFR-011 | UI component system + liquid glass design | Partial | Liquid-glass classes and reusable primitives are in use, but complete shadcn parity across all controls is still in progress. |
 
 ### Specific Gaps to Close Next
 - Task #7 filter parity with FR-018: add bathroom, balcony, drinking filters (in API and UI).
-- Resident lifecycle completion: add explicit transfer and vacate endpoints/flows (FR-014, FR-015).
-- Auth module: implement NextAuth + login + route protection (Issue #5).
+- Complete fee/complaint/notices admin workflows in UI (APIs are present).
+- Expand Slack command coverage (`/allocate`, `/complaints`, richer `/occupancy`) and add deeper integration tests.
 - Run a dedicated mobile responsiveness pass for core dashboard pages and validate against NFR-006 to NFR-009 breakpoints.
-- Implement shadcn/ui component library and apply Apple-like liquid glass styling tokens/variants across dashboard screens.
-- Build remaining modules in task order: fees, complaints, slack, notices/reporting.
+- Continue migrating all form controls to shared component primitives for full NFR-010 coverage.
 
 ## 8) Change Log Entry (Proposed)
 
@@ -199,3 +198,4 @@ Note: This is a design-system directive, not a business requirement. Keep it in 
 | 2026-02-28 | v0.2-draft | Codex | Aligned requirements with issue #1 comments: removed audit logs from Phase 1 scope, switched auth to OAuth-first, added Slack command requirements, and documented architecture/design decisions. |
 | 2026-02-28 | v0.2-draft.1 | Codex | Added explicit mobile-responsive non-functional requirements (NFR-006 to NFR-009), acceptance criteria, and current implementation status. |
 | 2026-02-28 | v0.2-draft.2 | Codex | Added explicit shadcn/ui component-system requirement and Apple-like liquid glass design requirement (NFR-010, NFR-011), and updated implementation status mapping. |
+| 2026-03-02 | v0.2-draft.3 | Codex | Updated implementation snapshot after Task 7-10.1 work: auth protection updates, resident transfer lifecycle, fee/complaint/notices/report APIs, Slack flag tests, and markdown+stream AI assistant improvements. |

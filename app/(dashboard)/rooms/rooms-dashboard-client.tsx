@@ -9,6 +9,7 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import LiquidLoader from "@/app/components/liquid-loader";
 
 type RoomListItem = {
@@ -266,6 +267,9 @@ function filtersToQuery(filters: Filters) {
 export default function RoomsDashboardClient() {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [transferTargetByResident, setTransferTargetByResident] = useState<
+    Record<string, string>
+  >({});
   const [message, setMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const query = useMemo(() => filtersToQuery(filters), [filters]);
@@ -321,6 +325,45 @@ export default function RoomsDashboardClient() {
     }
   });
 
+  const vacateMutation = useMutation({
+    mutationFn: ({ residentId }: { residentId: string }) =>
+      api("/api/residents/vacate", "POST", { residentId }),
+    onSuccess: async () => {
+      setMessage("Resident vacated successfully");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["rooms"] }),
+        queryClient.invalidateQueries({ queryKey: ["residents"] }),
+        selectedRoomId
+          ? queryClient.invalidateQueries({
+              queryKey: ["room-detail", selectedRoomId]
+            })
+          : Promise.resolve()
+      ]);
+    }
+  });
+
+  const transferMutation = useMutation({
+    mutationFn: ({
+      residentId,
+      targetBedId
+    }: {
+      residentId: string;
+      targetBedId: string;
+    }) => api("/api/residents/transfer", "POST", { residentId, targetBedId }),
+    onSuccess: async () => {
+      setMessage("Resident transferred successfully");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["rooms"] }),
+        queryClient.invalidateQueries({ queryKey: ["residents"] }),
+        selectedRoomId
+          ? queryClient.invalidateQueries({
+              queryKey: ["room-detail", selectedRoomId]
+            })
+          : Promise.resolve()
+      ]);
+    }
+  });
+
   async function allocate(
     bedId: string,
     payload: { residentId?: string; resident?: Record<string, string> }
@@ -333,11 +376,41 @@ export default function RoomsDashboardClient() {
     }
   }
 
+  async function vacate(residentId: string) {
+    setMessage(null);
+    try {
+      await vacateMutation.mutateAsync({ residentId });
+    } catch {
+      // Error surfaced through mutation state.
+    }
+  }
+
+  async function transfer(residentId: string, targetBedId: string) {
+    if (!targetBedId) return;
+    setMessage(null);
+    try {
+      await transferMutation.mutateAsync({ residentId, targetBedId });
+      setTransferTargetByResident((prev) => ({ ...prev, [residentId]: "" }));
+    } catch {
+      // Error surfaced through mutation state.
+    }
+  }
+
   const filterOptions = roomsQuery.data?.filterOptions ?? {
     blocks: [],
     floors: []
   };
-  const rooms = roomsQuery.data?.rooms ?? [];
+  const rooms = useMemo(() => roomsQuery.data?.rooms ?? [], [roomsQuery.data?.rooms]);
+  const transferTargets = useMemo(
+    () =>
+      rooms.flatMap((room) =>
+        room.availableBeds.map((bed) => ({
+          id: bed.id,
+          label: `${room.block.name}/F${room.floor.floorNumber} • Room ${room.roomNumber} • Bed ${bed.bedNumber}`
+        }))
+      ),
+    [rooms]
+  );
   const selectedRoom = roomDetailQuery.data ?? null;
   const residents = residentsQuery.data ?? [];
   const allocatingBedId =
@@ -349,6 +422,8 @@ export default function RoomsDashboardClient() {
     roomDetailQuery.error ??
     residentsQuery.error ??
     allocateMutation.error ??
+    vacateMutation.error ??
+    transferMutation.error ??
     null;
   const error =
     pageError instanceof Error ? pageError.message : pageError ? String(pageError) : null;
@@ -395,7 +470,7 @@ export default function RoomsDashboardClient() {
         <h2 className="mb-3 text-lg font-medium">Filters</h2>
         <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-5">
           <Select
-            className="rounded border px-3 py-2"
+           
             value={filters.sharingType}
             onChange={(e) => setFilters((p) => ({ ...p, sharingType: e.target.value }))}
           >
@@ -406,7 +481,7 @@ export default function RoomsDashboardClient() {
             <option value="DORMITORY">{labelFor("DORMITORY", roomTypeLabels)}</option>
           </Select>
           <Select
-            className="rounded border px-3 py-2"
+           
             value={filters.blockId}
             onChange={(e) =>
               setFilters((p) => ({ ...p, blockId: e.target.value, floorId: "" }))
@@ -420,7 +495,7 @@ export default function RoomsDashboardClient() {
             ))}
           </Select>
           <Select
-            className="rounded border px-3 py-2"
+           
             value={filters.floorId}
             onChange={(e) => setFilters((p) => ({ ...p, floorId: e.target.value }))}
           >
@@ -432,7 +507,7 @@ export default function RoomsDashboardClient() {
             ))}
           </Select>
           <Select
-            className="rounded border px-3 py-2"
+           
             value={filters.ac}
             onChange={(e) => setFilters((p) => ({ ...p, ac: e.target.value }))}
           >
@@ -441,7 +516,7 @@ export default function RoomsDashboardClient() {
             <option value="false">Non-AC</option>
           </Select>
           <Select
-            className="rounded border px-3 py-2"
+           
             value={filters.smoking}
             onChange={(e) => setFilters((p) => ({ ...p, smoking: e.target.value }))}
           >
@@ -450,7 +525,7 @@ export default function RoomsDashboardClient() {
             <option value="false">No Smoking</option>
           </Select>
           <Select
-            className="rounded border px-3 py-2"
+           
             value={filters.gender}
             onChange={(e) => setFilters((p) => ({ ...p, gender: e.target.value }))}
           >
@@ -459,19 +534,19 @@ export default function RoomsDashboardClient() {
             <option value="FEMALE">Female Compatible</option>
           </Select>
           <Input
-            className="rounded border px-3 py-2"
+           
             placeholder="Min price (₹)"
             value={filters.minPrice}
             onChange={(e) => setFilters((p) => ({ ...p, minPrice: e.target.value }))}
           />
           <Input
-            className="rounded border px-3 py-2"
+           
             placeholder="Max price (₹)"
             value={filters.maxPrice}
             onChange={(e) => setFilters((p) => ({ ...p, maxPrice: e.target.value }))}
           />
           <Select
-            className="rounded border px-3 py-2"
+           
             value={filters.availability}
             onChange={(e) =>
               setFilters((p) => ({ ...p, availability: e.target.value }))
@@ -481,13 +556,9 @@ export default function RoomsDashboardClient() {
             <option value="full">Fully Occupied</option>
             <option value="all">All Rooms</option>
           </Select>
-          <button
-            type="button"
-            className="glass-btn-primary rounded-xl px-3 py-2"
-            onClick={() => setFilters(defaultFilters)}
-          >
+          <Button type="button" onClick={() => setFilters(defaultFilters)}>
             Reset
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -559,14 +630,56 @@ export default function RoomsDashboardClient() {
                   {bed.occupants.length > 0 ? (
                     <ul className="mt-2 space-y-1 text-sm">
                       {bed.occupants.map((o) => (
-                        <li key={o.allocationId}>
-                          {o.resident.fullName} (
-                          {labelFor(o.resident.gender, {
-                            MALE: "Male",
-                            FEMALE: "Female",
-                            OTHER: "Other"
-                          })}
-                          ) {o.resident.contact ? `- ${o.resident.contact}` : ""}
+                        <li key={o.allocationId} className="space-y-2 border-b border-white/40 pb-2 last:border-b-0 last:pb-0">
+                          <p>
+                            {o.resident.fullName} (
+                            {labelFor(o.resident.gender, {
+                              MALE: "Male",
+                              FEMALE: "Female",
+                              OTHER: "Other"
+                            })}
+                            ) {o.resident.contact ? `- ${o.resident.contact}` : ""}
+                          </p>
+                          <div className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
+                            <Select
+                              value={transferTargetByResident[o.resident.id] ?? ""}
+                              onChange={(e) =>
+                                setTransferTargetByResident((prev) => ({
+                                  ...prev,
+                                  [o.resident.id]: e.target.value
+                                }))
+                              }
+                            >
+                              <option value="">Transfer to...</option>
+                              {transferTargets.map((target) => (
+                                <option key={target.id} value={target.id}>
+                                  {target.label}
+                                </option>
+                              ))}
+                            </Select>
+                            <Button
+                              variant="secondary"
+                              disabled={
+                                transferMutation.isPending ||
+                                !transferTargetByResident[o.resident.id]
+                              }
+                              onClick={() =>
+                                transfer(
+                                  o.resident.id,
+                                  transferTargetByResident[o.resident.id] || ""
+                                )
+                              }
+                            >
+                              {transferMutation.isPending ? "Transferring..." : "Transfer"}
+                            </Button>
+                            <Button
+                              variant="danger"
+                              disabled={vacateMutation.isPending}
+                              onClick={() => vacate(o.resident.id)}
+                            >
+                              {vacateMutation.isPending ? "Vacating..." : "Vacate"}
+                            </Button>
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -617,26 +730,28 @@ function AllocateForm({
   return (
     <div className="mt-2 space-y-2 text-sm">
       <div className="flex gap-2">
-        <button
+        <Button
           type="button"
-          className={`rounded-xl px-2 py-1 ${mode === "existing" ? "glass-btn-primary" : ""}`}
+          variant={mode === "existing" ? "primary" : "secondary"}
+          className="px-2 py-1 text-xs"
           onClick={() => setMode("existing")}
         >
           Existing Resident
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className={`rounded-xl px-2 py-1 ${mode === "new" ? "glass-btn-primary" : ""}`}
+          variant={mode === "new" ? "primary" : "secondary"}
+          className="px-2 py-1 text-xs"
           onClick={() => setMode("new")}
         >
           New Resident
-        </button>
+        </Button>
       </div>
 
       {mode === "existing" ? (
         <div className="flex gap-2">
           <Select
-            className="w-full rounded border px-3 py-2"
+            className="w-full"
             value={residentId}
             onChange={(e) => setResidentId(e.target.value)}
           >
@@ -648,33 +763,33 @@ function AllocateForm({
               </option>
             ))}
           </Select>
-          <button
+          <Button
             type="button"
-            className="glass-btn-primary rounded-xl px-3 py-2 disabled:opacity-50"
             disabled={!residentId || loading}
+            className="disabled:opacity-50"
             onClick={() => onSubmit({ residentId })}
           >
             {loading ? "Allocating..." : "Allocate"}
-          </button>
+          </Button>
         </div>
       ) : (
         <form className="grid gap-2 md:grid-cols-2" onSubmit={submitNewResident}>
-          <Input required name="fullName" placeholder="Full name" className="rounded border px-3 py-2" />
-          <Select required name="gender" className="rounded border px-3 py-2">
+          <Input required name="fullName" placeholder="Full name" />
+          <Select required name="gender">
             <option value="">Gender</option>
             <option value="MALE">Male</option>
             <option value="FEMALE">Female</option>
             <option value="OTHER">Other</option>
           </Select>
-          <Input name="contact" placeholder="Contact" className="rounded border px-3 py-2" />
-          <Input name="email" placeholder="Email" className="rounded border px-3 py-2" />
-          <button
+          <Input name="contact" placeholder="Contact" />
+          <Input name="email" placeholder="Email" />
+          <Button
             type="submit"
-            className="glass-btn-primary rounded-xl px-3 py-2 disabled:opacity-50 md:col-span-2"
+            className="disabled:opacity-50 md:col-span-2"
             disabled={loading}
           >
             {loading ? "Allocating..." : "Create + Allocate"}
-          </button>
+          </Button>
         </form>
       )}
     </div>

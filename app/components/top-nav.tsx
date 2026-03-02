@@ -56,7 +56,7 @@ export default function TopNav() {
           prefetch
           onMouseEnter={() => prefetchRoute("/")}
           onFocus={() => prefetchRoute("/")}
-          className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600 transition hover:text-slate-800"
+          className="inline-flex min-h-11 items-center px-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600 transition hover:text-slate-800"
         >
           Hostel Management
         </Link>
@@ -73,7 +73,7 @@ export default function TopNav() {
                 prefetch
                 onMouseEnter={() => prefetchRoute(item.href)}
                 onFocus={() => prefetchRoute(item.href)}
-                className={`inline-flex items-center rounded-xl px-3 py-2 text-sm transition ${
+                className={`inline-flex min-h-11 items-center rounded-xl px-3 py-2 text-sm transition ${
                   isActive ? "glass-btn-primary" : "glass-card"
                 }`}
               >

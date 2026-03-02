@@ -1,7 +1,11 @@
 "use client";
 
+import React from "react";
 import { FormEvent, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
 
 type AssistantResponse = {
   intent: "vacancy" | "finance" | "room_search" | "general";
@@ -20,6 +24,43 @@ const quickPrompts = [
   "Finance summary for hostel",
   "Vacancy in block A floor 2"
 ];
+
+export function AssistantAnswerMarkdown({ answer }: { answer: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeSanitize]}
+      components={{
+        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+        ul: ({ children }) => <ul className="mb-2 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>,
+        ol: ({ children }) => <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0">{children}</ol>,
+        code: ({ children }) => (
+          <code className="rounded bg-slate-900/10 px-1.5 py-0.5 text-[0.85em]">{children}</code>
+        ),
+        pre: ({ children }) => (
+          <pre className="mb-2 overflow-x-auto rounded-lg bg-slate-900/10 p-2 text-xs last:mb-0">
+            {children}
+          </pre>
+        ),
+        h1: ({ children }) => <h3 className="mb-2 text-base font-semibold">{children}</h3>,
+        h2: ({ children }) => <h4 className="mb-2 text-sm font-semibold">{children}</h4>,
+        h3: ({ children }) => <h5 className="mb-2 text-sm font-medium">{children}</h5>,
+        a: ({ href, children }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sky-700 underline underline-offset-2"
+          >
+            {children}
+          </a>
+        )
+      }}
+    >
+      {answer}
+    </ReactMarkdown>
+  );
+}
 
 export default function HomeAiAssistant() {
   const [query, setQuery] = useState("");
@@ -196,13 +237,13 @@ export default function HomeAiAssistant() {
       ) : null}
 
       {result && answerText ? (
-        <div className="glass-card whitespace-pre-line rounded-xl p-3 text-sm text-slate-800">
+        <div className="glass-card rounded-xl p-3 text-sm text-slate-800">
           {lastQuestion ? (
             <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">
               Question: {lastQuestion}
             </p>
           ) : null}
-          {answerText}
+          <AssistantAnswerMarkdown answer={answerText} />
           {loading ? (
             <span className="ml-1 inline-block h-4 w-[2px] animate-pulse bg-slate-400 align-middle" />
           ) : null}

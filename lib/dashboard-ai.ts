@@ -32,11 +32,26 @@ type GeminiRequestBody = {
   }>;
 };
 
-type TableSnapshot<T> = {
-  total: number;
-  returned: number;
-  truncated: boolean;
-  rows: T[];
+type SchemaColumn = {
+  name: string;
+  dataType: string;
+  nullable: boolean;
+};
+
+type SchemaMetadata = {
+  generatedAt: string;
+  tableNames: string[];
+  tables: Record<string, SchemaColumn[]>;
+};
+
+type SqlPipelineResult = {
+  sql: string;
+  rowCount: number;
+  rows: Array<Record<string, unknown>>;
+  hints: {
+    floorNumber?: number;
+    blockName?: string;
+  };
 };
 
 const ORDINAL_MAP: Record<string, number> = {
@@ -52,28 +67,29 @@ const ORDINAL_MAP: Record<string, number> = {
   tenth: 10
 };
 
-const DB_CONTEXT_ROW_LIMIT = Number(process.env.AI_CONTEXT_ROW_LIMIT || 80);
-const DB_CONTEXT_CACHE_TTL_MS = 20_000;
+const ALLOWED_TABLES = [
+  "hostel",
+  "block",
+  "floor",
+  "room",
+  "bed",
+  "resident",
+  "allocation",
+  "invoice",
+  "payment",
+  "complaint",
+  "notice"
+] as const;
 
-type CachedDbSnapshot = {
-  at: number;
-  data: Awaited<ReturnType<typeof buildDatabaseSnapshot>>;
-};
+const SQL_CONTEXT_ROW_LIMIT = Number(process.env.AI_SQL_ROW_LIMIT || 60);
+const SQL_MAX_ROW_LIMIT = Math.max(10, Math.min(200, SQL_CONTEXT_ROW_LIMIT));
+const SCHEMA_CACHE_TTL_MS = 5 * 60 * 1000;
 
-let cachedDbSnapshot: CachedDbSnapshot | null = null;
+let cachedSchema: { at: number; data: SchemaMetadata } | null = null;
 
 export function toNumber(value: unknown) {
   if (value === null || value === undefined) return 0;
   return Number(value);
-}
-
-function tableSnapshot<T>(rows: T[], total: number): TableSnapshot<T> {
-  return {
-    total,
-    returned: rows.length,
-    truncated: rows.length < total,
-    rows
-  };
 }
 
 export function parseFloorNumber(text: string) {
@@ -177,484 +193,6 @@ export function parseRoomSearchFilters(question: string) {
   return params;
 }
 
-async function buildDatabaseSnapshot() {
-  const limit = Math.max(20, Math.min(250, DB_CONTEXT_ROW_LIMIT));
-
-  const [
-    hostelTotal,
-    blockTotal,
-    floorTotal,
-    roomTotal,
-    bedTotal,
-    residentTotal,
-    allocationTotal,
-    invoiceTotal,
-    paymentTotal,
-    complaintTotal,
-    noticeTotal,
-    hostels,
-    blocks,
-    floors,
-    rooms,
-    beds,
-    residents,
-    allocations,
-    invoices,
-    payments,
-    complaints,
-    notices
-  ] = await Promise.all([
-    prisma.hostel.count(),
-    prisma.block.count(),
-    prisma.floor.count(),
-    prisma.room.count(),
-    prisma.bed.count(),
-    prisma.resident.count(),
-    prisma.allocation.count(),
-    prisma.invoice.count(),
-    prisma.payment.count(),
-    prisma.complaint.count(),
-    prisma.notice.count(),
-    prisma.hostel.findMany({
-      orderBy: { createdAt: "asc" },
-      take: limit,
-      select: {
-        id: true,
-        name: true,
-        address: true,
-        contactNumber: true,
-        timezone: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true
-      }
-    }),
-    prisma.block.findMany({
-      orderBy: [{ name: "asc" }],
-      take: limit,
-      select: {
-        id: true,
-        hostelId: true,
-        name: true,
-        description: true,
-        createdAt: true
-      }
-    }),
-    prisma.floor.findMany({
-      orderBy: [{ floorNumber: "asc" }],
-      take: limit,
-      select: {
-        id: true,
-        blockId: true,
-        floorNumber: true,
-        label: true,
-        createdAt: true
-      }
-    }),
-    prisma.room.findMany({
-      where: { status: { not: "INACTIVE" } },
-      orderBy: [{ roomNumber: "asc" }],
-      take: limit,
-      select: {
-        id: true,
-        floorId: true,
-        roomNumber: true,
-        sharingType: true,
-        genderRestriction: true,
-        status: true,
-        basePrice: true,
-        attributes: true,
-        createdAt: true
-      }
-    }),
-    prisma.bed.findMany({
-      orderBy: [{ bedNumber: "asc" }],
-      take: limit,
-      select: {
-        id: true,
-        roomId: true,
-        bedNumber: true,
-        status: true,
-        createdAt: true
-      }
-    }),
-    prisma.resident.findMany({
-      orderBy: [{ createdAt: "desc" }],
-      take: limit,
-      select: {
-        id: true,
-        fullName: true,
-        gender: true,
-        status: true,
-        contact: true,
-        email: true,
-        idProofType: true,
-        idProofNumber: true,
-        createdAt: true
-      }
-    }),
-    prisma.allocation.findMany({
-      orderBy: [{ createdAt: "desc" }],
-      take: limit,
-      select: {
-        id: true,
-        residentId: true,
-        bedId: true,
-        status: true,
-        startDate: true,
-        endDate: true,
-        notes: true,
-        createdAt: true
-      }
-    }),
-    prisma.invoice.findMany({
-      orderBy: [{ createdAt: "desc" }],
-      take: limit,
-      select: {
-        id: true,
-        residentId: true,
-        allocationId: true,
-        periodStart: true,
-        periodEnd: true,
-        totalAmount: true,
-        dueDate: true,
-        status: true,
-        createdAt: true
-      }
-    }),
-    prisma.payment.findMany({
-      orderBy: [{ createdAt: "desc" }],
-      take: limit,
-      select: {
-        id: true,
-        invoiceId: true,
-        residentId: true,
-        amount: true,
-        method: true,
-        status: true,
-        reference: true,
-        receivedAt: true,
-        createdAt: true
-      }
-    }),
-    prisma.complaint.findMany({
-      orderBy: [{ createdAt: "desc" }],
-      take: limit,
-      select: {
-        id: true,
-        residentId: true,
-        hostelId: true,
-        roomId: true,
-        category: true,
-        title: true,
-        description: true,
-        status: true,
-        resolutionNotes: true,
-        createdAt: true,
-        closedAt: true
-      }
-    }),
-    prisma.notice.findMany({
-      orderBy: [{ createdAt: "desc" }],
-      take: limit,
-      select: {
-        id: true,
-        hostelId: true,
-        title: true,
-        body: true,
-        audience: true,
-        status: true,
-        publishedAt: true,
-        createdAt: true
-      }
-    })
-  ]);
-
-  const schema = {
-    hostel: [
-      "id",
-      "name",
-      "address",
-      "contactNumber",
-      "timezone",
-      "status",
-      "createdAt",
-      "updatedAt"
-    ],
-    block: ["id", "hostelId", "name", "description", "createdAt"],
-    floor: ["id", "blockId", "floorNumber", "label", "createdAt"],
-    room: [
-      "id",
-      "floorId",
-      "roomNumber",
-      "sharingType",
-      "genderRestriction",
-      "status",
-      "basePrice",
-      "attributes",
-      "createdAt"
-    ],
-    bed: ["id", "roomId", "bedNumber", "status", "createdAt"],
-    resident: [
-      "id",
-      "fullName",
-      "gender",
-      "status",
-      "contact",
-      "email",
-      "idProofType",
-      "idProofNumber",
-      "createdAt"
-    ],
-    allocation: [
-      "id",
-      "residentId",
-      "bedId",
-      "status",
-      "startDate",
-      "endDate",
-      "notes",
-      "createdAt"
-    ],
-    invoice: [
-      "id",
-      "residentId",
-      "allocationId",
-      "periodStart",
-      "periodEnd",
-      "totalAmount",
-      "dueDate",
-      "status",
-      "createdAt"
-    ],
-    payment: [
-      "id",
-      "invoiceId",
-      "residentId",
-      "amount",
-      "method",
-      "status",
-      "reference",
-      "receivedAt",
-      "createdAt"
-    ],
-    complaint: [
-      "id",
-      "residentId",
-      "hostelId",
-      "roomId",
-      "category",
-      "title",
-      "description",
-      "status",
-      "resolutionNotes",
-      "createdAt",
-      "closedAt"
-    ],
-    notice: [
-      "id",
-      "hostelId",
-      "title",
-      "body",
-      "audience",
-      "status",
-      "publishedAt",
-      "createdAt"
-    ]
-  };
-
-  return {
-    metadata: {
-      generatedAt: new Date().toISOString(),
-      rowLimitPerTable: limit
-    },
-    schema,
-    tables: {
-      hostel: tableSnapshot(hostels, hostelTotal),
-      block: tableSnapshot(blocks, blockTotal),
-      floor: tableSnapshot(floors, floorTotal),
-      room: tableSnapshot(rooms, roomTotal),
-      bed: tableSnapshot(beds, bedTotal),
-      resident: tableSnapshot(residents, residentTotal),
-      allocation: tableSnapshot(allocations, allocationTotal),
-      invoice: tableSnapshot(invoices, invoiceTotal),
-      payment: tableSnapshot(payments, paymentTotal),
-      complaint: tableSnapshot(complaints, complaintTotal),
-      notice: tableSnapshot(notices, noticeTotal)
-    }
-  };
-}
-
-async function getDatabaseSnapshotCached() {
-  const now = Date.now();
-  if (cachedDbSnapshot && now - cachedDbSnapshot.at <= DB_CONTEXT_CACHE_TTL_MS) {
-    return cachedDbSnapshot.data;
-  }
-  const data = await buildDatabaseSnapshot();
-  cachedDbSnapshot = { at: now, data };
-  return data;
-}
-
-async function buildDashboardContext(question: string) {
-  const [hostel, totalBeds, occupiedBedRows, invoiceAggregate, paymentAggregate] =
-    await Promise.all([
-      prisma.hostel.findFirst({
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          name: true,
-          address: true,
-          contactNumber: true,
-          timezone: true,
-          status: true
-        }
-      }),
-      prisma.bed.count(),
-      prisma.allocation.findMany({
-        where: {
-          status: "ACTIVE",
-          resident: { status: "ACTIVE" }
-        },
-        select: { bedId: true },
-        distinct: ["bedId"]
-      }),
-      prisma.invoice.aggregate({ _sum: { totalAmount: true } }),
-      prisma.payment.aggregate({
-        where: { status: "COMPLETED" },
-        _sum: { amount: true }
-      })
-    ]);
-
-  const occupiedBeds = occupiedBedRows.length;
-  const vacantBeds = Math.max(0, totalBeds - occupiedBeds);
-  const invoiced = toNumber(invoiceAggregate._sum.totalAmount);
-  const collected = toNumber(paymentAggregate._sum.amount);
-  const dues = Math.max(0, invoiced - collected);
-
-  const floorHint = parseFloorNumber(question);
-  const blockHint = parseBlockName(question);
-  const floors = await prisma.floor.findMany({
-    where: {
-      ...(floorHint !== undefined ? { floorNumber: floorHint } : {}),
-      ...(blockHint
-        ? {
-            block: {
-              name: {
-                contains: blockHint,
-                mode: "insensitive"
-              }
-            }
-          }
-        : {})
-    },
-    include: {
-      block: { select: { name: true } },
-      rooms: {
-        include: {
-          beds: {
-            include: {
-              allocations: {
-                where: {
-                  status: "ACTIVE",
-                  resident: { status: "ACTIVE" }
-                },
-                select: { id: true }
-              }
-            }
-          }
-        }
-      }
-    },
-    orderBy: [{ block: { name: "asc" } }, { floorNumber: "asc" }],
-    take: 6
-  });
-
-  const floorVacancy = floors.map((floor) => {
-    const totalBedsForFloor = floor.rooms.reduce(
-      (sum, room) => sum + room.beds.length,
-      0
-    );
-    const occupiedBedsForFloor = floor.rooms.reduce(
-      (sum, room) =>
-        sum + room.beds.filter((bed) => bed.allocations.length > 0).length,
-      0
-    );
-    return {
-      block: floor.block.name,
-      floorNumber: floor.floorNumber,
-      totalBeds: totalBedsForFloor,
-      occupiedBeds: occupiedBedsForFloor,
-      vacantBeds: Math.max(0, totalBedsForFloor - occupiedBedsForFloor)
-    };
-  });
-
-  const roomFilters = parseRoomSearchFilters(question);
-  const roomMatches = (await searchRooms(roomFilters)).slice(0, 20).map((room) => ({
-    roomNumber: room.roomNumber,
-    block: room.block.name,
-    floorNumber: room.floor.floorNumber,
-    sharingType: room.sharingType,
-    vacantBeds: room.counts.vacantBeds,
-    basePrice: room.basePrice,
-    attributes: room.attributes
-  }));
-
-  const database = await getDatabaseSnapshotCached();
-
-  return {
-    hostel,
-    occupancy: {
-      totalBeds,
-      occupiedBeds,
-      vacantBeds
-    },
-    finance: {
-      invoiced,
-      collected,
-      dues
-    },
-    floorVacancy,
-    roomMatches,
-    database
-  };
-}
-
-async function askModel(question: string, intent: AssistantIntent, context: unknown) {
-  const response = await fetch(getGeminiEndpoint(false), {
-    method: "POST",
-    headers: geminiHeaders(),
-    body: JSON.stringify(
-      buildGeminiRequestBody({
-        question,
-        intent,
-        context
-      })
-    )
-  });
-
-  const payload = (await response.json()) as GeminiResponsePayload;
-
-  if (!response.ok) {
-    throw new Error(parseOpenAiError(response.status, payload));
-  }
-
-  const text = extractGeminiText(payload);
-  if (!text) throw new Error("Gemini returned an empty response.");
-  return text;
-}
-
-export async function answerDashboardQuestion(question: string) {
-  const intent = classifyIntent(question);
-  const context = await buildDashboardContext(question);
-  const answer = await askModel(question, intent, context);
-
-  return {
-    intent,
-    answer,
-    source: "ai"
-  };
-}
-
 function getRequiredApiKey() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -722,6 +260,363 @@ function extractGeminiText(payload: GeminiResponsePayload) {
     .trim();
 }
 
+function extractReferencedTables(sql: string) {
+  const referenced = new Set<string>();
+  const regex = /\b(?:from|join)\s+([a-zA-Z0-9_."`]+)/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(sql)) !== null) {
+    const raw = match[1]
+      .replace(/["`]/g, "")
+      .trim()
+      .toLowerCase();
+    const table = raw.includes(".") ? raw.split(".").pop() || raw : raw;
+    if (table) {
+      referenced.add(table);
+    }
+  }
+
+  return [...referenced];
+}
+
+function stripSqlFence(text: string) {
+  const fenced = text.match(/```(?:json|sql)?\s*([\s\S]*?)```/i)?.[1];
+  return (fenced || text).trim();
+}
+
+function parseSqlDraft(text: string) {
+  const raw = stripSqlFence(text);
+
+  try {
+    const parsed = JSON.parse(raw) as { sql?: string };
+    if (parsed?.sql) return parsed.sql;
+  } catch {
+    // Continue with heuristics below.
+  }
+
+  const objectStart = raw.indexOf("{");
+  const objectEnd = raw.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    const maybeJson = raw.slice(objectStart, objectEnd + 1);
+    try {
+      const parsed = JSON.parse(maybeJson) as { sql?: string };
+      if (parsed?.sql) return parsed.sql;
+    } catch {
+      // Fall through.
+    }
+  }
+
+  const sqlMatch = raw.match(/\b(with|select)\b[\s\S]*/i);
+  return (sqlMatch ? sqlMatch[0] : raw).trim();
+}
+
+function normalizeSql(sql: string) {
+  return sql.replace(/\s+/g, " ").trim().replace(/;+\s*$/g, "");
+}
+
+function ensureSqlLimit(sql: string, limit = SQL_MAX_ROW_LIMIT) {
+  const normalized = normalizeSql(sql);
+  if (/\blimit\s+\d+\b/i.test(normalized)) {
+    return normalized.replace(/\blimit\s+(\d+)\b/i, (_, value) => {
+      const parsed = Number(value);
+      const bounded = Number.isFinite(parsed)
+        ? Math.max(1, Math.min(limit, parsed))
+        : limit;
+      return `LIMIT ${bounded}`;
+    });
+  }
+  return `${normalized} LIMIT ${limit}`;
+}
+
+export function validateReadOnlySql(
+  sql: string,
+  allowedTables: ReadonlyArray<string> = ALLOWED_TABLES
+) {
+  const normalized = normalizeSql(sql);
+  if (!normalized) {
+    return { ok: false as const, reason: "SQL is empty" };
+  }
+
+  if (!/^(with|select)\b/i.test(normalized)) {
+    return {
+      ok: false as const,
+      reason: "Only SELECT/CTE queries are allowed"
+    };
+  }
+
+  if (/;/.test(normalized)) {
+    return {
+      ok: false as const,
+      reason: "Multiple SQL statements are not allowed"
+    };
+  }
+
+  if (/(--|\/\*|\*\/)/.test(normalized)) {
+    return {
+      ok: false as const,
+      reason: "SQL comments are not allowed"
+    };
+  }
+
+  if (/\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|copy|execute|call)\b/i.test(normalized)) {
+    return {
+      ok: false as const,
+      reason: "Mutating SQL keywords are not allowed"
+    };
+  }
+
+  const referencedTables = extractReferencedTables(normalized);
+  const allowedSet = new Set(allowedTables.map((table) => table.toLowerCase()));
+  if (
+    referencedTables.length > 0 &&
+    referencedTables.some((table) => !allowedSet.has(table))
+  ) {
+    return {
+      ok: false as const,
+      reason: "Query references a table that is not allowlisted"
+    };
+  }
+
+  return { ok: true as const, sql: ensureSqlLimit(normalized) };
+}
+
+function toJsonSafe(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "bigint") return Number(value);
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map((item) => toJsonSafe(item));
+  if (typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, innerValue] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = toJsonSafe(innerValue);
+    }
+    return result;
+  }
+  return value;
+}
+
+async function buildSchemaMetadata() {
+  const columnRows = await prisma.$queryRawUnsafe<
+    Array<{
+      table_name: string;
+      column_name: string;
+      data_type: string;
+      is_nullable: "YES" | "NO";
+    }>
+  >(
+    `
+    SELECT table_name, column_name, data_type, is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = ANY(ARRAY[${ALLOWED_TABLES.map((table) => `'${table}'`).join(",")}])
+    ORDER BY table_name, ordinal_position
+    `
+  );
+
+  const tables: Record<string, SchemaColumn[]> = {};
+  for (const row of columnRows) {
+    if (!tables[row.table_name]) {
+      tables[row.table_name] = [];
+    }
+    tables[row.table_name].push({
+      name: row.column_name,
+      dataType: row.data_type,
+      nullable: row.is_nullable === "YES"
+    });
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    tableNames: Object.keys(tables).sort(),
+    tables
+  } satisfies SchemaMetadata;
+}
+
+async function getSchemaMetadataCached() {
+  const now = Date.now();
+  if (cachedSchema && now - cachedSchema.at <= SCHEMA_CACHE_TTL_MS) {
+    return cachedSchema.data;
+  }
+
+  const data = await buildSchemaMetadata();
+  cachedSchema = {
+    at: now,
+    data
+  };
+  return data;
+}
+
+async function buildLightweightContext(question: string) {
+  const floorNumber = parseFloorNumber(question);
+  const blockName = parseBlockName(question);
+
+  const roomFilters = parseRoomSearchFilters(question);
+  const roomMatches = (await searchRooms(roomFilters)).slice(0, 8).map((room) => ({
+    roomNumber: room.roomNumber,
+    block: room.block.name,
+    floorNumber: room.floor.floorNumber,
+    sharingType: room.sharingType,
+    vacantBeds: room.counts.vacantBeds,
+    basePrice: room.basePrice,
+    attributes: room.attributes
+  }));
+
+  return {
+    hints: {
+      floorNumber,
+      blockName
+    },
+    roomMatches
+  };
+}
+
+async function generateSqlFromQuestion({
+  question,
+  intent,
+  schema,
+  hints
+}: {
+  question: string;
+  intent: AssistantIntent;
+  schema: SchemaMetadata;
+  hints: {
+    floorNumber?: number;
+    blockName?: string;
+  };
+}) {
+  const response = await fetch(getGeminiEndpoint(false), {
+    method: "POST",
+    headers: geminiHeaders(),
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [
+          {
+            text: [
+              "You are a PostgreSQL query planner for a hostel management app.",
+              "Return strict JSON only: {\"sql\":\"...\"}.",
+              "Write exactly one read-only SQL statement.",
+              "Use only SELECT or WITH ... SELECT.",
+              `Only these tables are allowed: ${schema.tableNames.join(", ")}.`,
+              `Always include LIMIT <= ${SQL_MAX_ROW_LIMIT}.`,
+              "Do not include comments, explanations, or markdown."
+            ].join(" ")
+          }
+        ]
+      },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: JSON.stringify({
+                intent,
+                question,
+                hints,
+                schema: schema.tables
+              })
+            }
+          ]
+        }
+      ]
+    })
+  });
+
+  const payload = (await response.json()) as GeminiResponsePayload;
+  if (!response.ok) {
+    throw new Error(parseOpenAiError(response.status, payload));
+  }
+
+  const raw = extractGeminiText(payload);
+  const sqlDraft = parseSqlDraft(raw);
+  const validation = validateReadOnlySql(sqlDraft, schema.tableNames);
+  if (!validation.ok) {
+    throw new Error(`Unsafe SQL generated: ${validation.reason}`);
+  }
+
+  return validation.sql;
+}
+
+async function executeReadOnlySql(sql: string) {
+  const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(sql);
+  return rows.map((row) => toJsonSafe(row) as Record<string, unknown>);
+}
+
+async function buildSqlContext(question: string, intent: AssistantIntent): Promise<SqlPipelineResult> {
+  const schema = await getSchemaMetadataCached();
+  const light = await buildLightweightContext(question);
+  const sql = await generateSqlFromQuestion({
+    question,
+    intent,
+    schema,
+    hints: light.hints
+  });
+  const rows = await executeReadOnlySql(sql);
+
+  return {
+    sql,
+    rowCount: rows.length,
+    rows,
+    hints: light.hints
+  };
+}
+
+async function askModel(question: string, intent: AssistantIntent, context: unknown) {
+  const response = await fetch(getGeminiEndpoint(false), {
+    method: "POST",
+    headers: geminiHeaders(),
+    body: JSON.stringify(
+      buildGeminiRequestBody({
+        question,
+        intent,
+        context
+      })
+    )
+  });
+
+  const payload = (await response.json()) as GeminiResponsePayload;
+  if (!response.ok) {
+    throw new Error(parseOpenAiError(response.status, payload));
+  }
+
+  const text = extractGeminiText(payload);
+  if (!text) throw new Error("Gemini returned an empty response.");
+  return text;
+}
+
+async function buildAnswerContext(question: string, intent: AssistantIntent) {
+  try {
+    const pipeline = await buildSqlContext(question, intent);
+    return {
+      source: "sql_pipeline" as const,
+      pipeline
+    };
+  } catch (error) {
+    const fallback = await buildLightweightContext(question);
+    return {
+      source: "fallback" as const,
+      fallback,
+      error: error instanceof Error ? error.message : "SQL pipeline failed"
+    };
+  }
+}
+
+export async function answerDashboardQuestion(question: string) {
+  const intent = classifyIntent(question);
+  const answerContext = await buildAnswerContext(question, intent);
+
+  const answer = await askModel(question, intent, {
+    ...answerContext,
+    instructions:
+      "If source=sql_pipeline, rely on SQL rows for the answer. If source=fallback, answer conservatively and mention uncertainty."
+  });
+
+  return {
+    intent,
+    answer,
+    source: "ai"
+  };
+}
+
 export function parseOpenAiError(status: number, payload: GeminiResponsePayload) {
   const errText =
     payload.error?.message || extractGeminiText(payload) || "Gemini request failed";
@@ -731,7 +626,8 @@ export function parseOpenAiError(status: number, payload: GeminiResponsePayload)
 
 export async function buildDashboardAiRequest(question: string, stream = false) {
   const intent = classifyIntent(question);
-  const context = await buildDashboardContext(question);
+  const answerContext = await buildAnswerContext(question, intent);
+
   return {
     url: getGeminiEndpoint(stream),
     intent,
@@ -739,7 +635,11 @@ export async function buildDashboardAiRequest(question: string, stream = false) 
     body: buildGeminiRequestBody({
       question,
       intent,
-      context
+      context: {
+        ...answerContext,
+        instructions:
+          "If source=sql_pipeline, rely on SQL rows for the answer. If source=fallback, answer conservatively and mention uncertainty."
+      }
     })
   };
 }

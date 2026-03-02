@@ -271,31 +271,31 @@ export default function HostelConfigClient() {
             name="name"
             placeholder="Hostel name"
             defaultValue={hostel?.name ?? ""}
-            className="rounded border px-3 py-2"
+           
           />
           <Input
             required
             name="address"
             placeholder="Address"
             defaultValue={hostel?.address ?? ""}
-            className="rounded border px-3 py-2"
+           
           />
           <Input
             name="contactNumber"
             placeholder="Contact number"
             defaultValue={hostel?.contactNumber ?? ""}
-            className="rounded border px-3 py-2"
+           
           />
           <Input
             name="timezone"
             placeholder="Timezone (e.g. Asia/Kolkata)"
             defaultValue={hostel?.timezone ?? ""}
-            className="rounded border px-3 py-2"
+           
           />
           <Select
             name="status"
             defaultValue={hostel?.status ?? "ACTIVE"}
-            className="rounded border px-3 py-2"
+           
           >
             <option value="ACTIVE">{hostelStatusLabels.ACTIVE}</option>
             <option value="INACTIVE">{hostelStatusLabels.INACTIVE}</option>
@@ -329,8 +329,8 @@ export default function HostelConfigClient() {
               e.currentTarget.reset();
             }}
           >
-            <Input required name="name" placeholder="New block name" className="rounded border px-3 py-2" />
-            <Input name="description" placeholder="Description" className="rounded border px-3 py-2" />
+            <Input required name="name" placeholder="New block name" />
+            <Input name="description" placeholder="Description" />
             <button className={primaryActionClass} type="submit">
               Add Block
             </button>
@@ -369,12 +369,12 @@ export default function HostelConfigClient() {
                       required
                       name="name"
                       defaultValue={block.name}
-                      className="rounded border px-3 py-2"
+                     
                     />
                     <Input
                       name="description"
                       defaultValue={block.description ?? ""}
-                      className="rounded border px-3 py-2"
+                     
                     />
                     <button className={secondaryActionClass} type="submit">
                       Save Block
@@ -420,9 +420,9 @@ export default function HostelConfigClient() {
                       type="number"
                       name="floorNumber"
                       placeholder="Floor number"
-                      className="rounded border px-3 py-2"
+                     
                     />
-                    <Input name="label" placeholder="Label" className="rounded border px-3 py-2" />
+                    <Input name="label" placeholder="Label" />
                     <button className={primaryActionClass} type="submit">
                       Add Floor
                     </button>
@@ -460,12 +460,12 @@ export default function HostelConfigClient() {
                             type="number"
                             name="floorNumber"
                             defaultValue={floor.floorNumber}
-                            className="rounded border px-3 py-2"
+                           
                           />
                           <Input
                             name="label"
                             defaultValue={floor.label ?? ""}
-                            className="rounded border px-3 py-2"
+                           
                           />
                           <button className={secondaryActionClass} type="submit">
                             Save Floor
@@ -511,20 +511,20 @@ export default function HostelConfigClient() {
                             e.currentTarget.reset();
                           }}
                         >
-                          <Input required name="roomNumber" placeholder="Room no." className="rounded border px-3 py-2" />
-                          <Select name="sharingType" className="rounded border px-3 py-2">
+                          <Input required name="roomNumber" placeholder="Room no." />
+                          <Select name="sharingType">
                             <option value="SINGLE">{sharingTypeLabels.SINGLE}</option>
                             <option value="DOUBLE">{sharingTypeLabels.DOUBLE}</option>
                             <option value="TRIPLE">{sharingTypeLabels.TRIPLE}</option>
                             <option value="DORMITORY">{sharingTypeLabels.DORMITORY}</option>
                           </Select>
-                          <Input name="basePrice" placeholder="Base price" className="rounded border px-3 py-2" />
-                          <Select name="genderRestriction" className="rounded border px-3 py-2">
+                          <Input name="basePrice" placeholder="Base price" />
+                          <Select name="genderRestriction">
                             <option value="ANY">{genderRestrictionLabels.ANY}</option>
                             <option value="MALE_ONLY">{genderRestrictionLabels.MALE_ONLY}</option>
                             <option value="FEMALE_ONLY">{genderRestrictionLabels.FEMALE_ONLY}</option>
                           </Select>
-                          <Select name="status" className="rounded border px-3 py-2">
+                          <Select name="status">
                             <option value="ACTIVE">{roomStatusLabels.ACTIVE}</option>
                             <option value="MAINTENANCE">{roomStatusLabels.MAINTENANCE}</option>
                             <option value="INACTIVE">{roomStatusLabels.INACTIVE}</option>
@@ -583,12 +583,12 @@ export default function HostelConfigClient() {
                                   required
                                   name="roomNumber"
                                   defaultValue={room.roomNumber}
-                                  className="rounded border px-3 py-2"
+                                 
                                 />
                                 <Select
                                   name="sharingType"
                                   defaultValue={room.sharingType}
-                                  className="rounded border px-3 py-2"
+                                 
                                 >
                                   <option value="SINGLE">{sharingTypeLabels.SINGLE}</option>
                                   <option value="DOUBLE">{sharingTypeLabels.DOUBLE}</option>
@@ -598,12 +598,12 @@ export default function HostelConfigClient() {
                                 <Input
                                   name="basePrice"
                                   defaultValue={room.basePrice ?? ""}
-                                  className="rounded border px-3 py-2"
+                                 
                                 />
                                 <Select
                                   name="genderRestriction"
                                   defaultValue={room.genderRestriction}
-                                  className="rounded border px-3 py-2"
+                                 
                                 >
                                   <option value="ANY">{genderRestrictionLabels.ANY}</option>
                                   <option value="MALE_ONLY">{genderRestrictionLabels.MALE_ONLY}</option>
@@ -612,7 +612,7 @@ export default function HostelConfigClient() {
                                 <Select
                                   name="status"
                                   defaultValue={room.status}
-                                  className="rounded border px-3 py-2"
+                                 
                                 >
                                   <option value="ACTIVE">{roomStatusLabels.ACTIVE}</option>
                                   <option value="MAINTENANCE">{roomStatusLabels.MAINTENANCE}</option>
@@ -689,8 +689,8 @@ export default function HostelConfigClient() {
                                   e.currentTarget.reset();
                                 }}
                               >
-                                <Input required name="bedNumber" placeholder="Bed no." className="rounded border px-3 py-2" />
-                                <Select name="status" className="rounded border px-3 py-2">
+                                <Input required name="bedNumber" placeholder="Bed no." />
+                                <Select name="status">
                                   <option value="AVAILABLE">{bedStatusLabels.AVAILABLE}</option>
                                   <option value="OCCUPIED">{bedStatusLabels.OCCUPIED}</option>
                                   <option value="RESERVED">{bedStatusLabels.RESERVED}</option>
@@ -726,12 +726,12 @@ export default function HostelConfigClient() {
                                       required
                                       name="bedNumber"
                                       defaultValue={bed.bedNumber}
-                                      className="rounded border px-3 py-2"
+                                     
                                     />
                                     <Select
                                       name="status"
                                       defaultValue={bed.status}
-                                      className="rounded border px-3 py-2"
+                                     
                                     >
                                       <option value="AVAILABLE">{bedStatusLabels.AVAILABLE}</option>
                                       <option value="OCCUPIED">{bedStatusLabels.OCCUPIED}</option>

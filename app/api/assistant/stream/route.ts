@@ -31,6 +31,15 @@ function sse(data: unknown) {
   return `data: ${JSON.stringify(data)}\n\n`;
 }
 
+function splitDelta(text: string, chunkSize = 24) {
+  if (text.length <= chunkSize) return [text];
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += chunkSize) {
+    chunks.push(text.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { query?: string };
@@ -124,7 +133,9 @@ export async function POST(request: Request) {
 
                 const delta = extractDelta(event);
                 if (delta) {
-                  push({ type: "delta", text: delta });
+                  for (const chunk of splitDelta(delta)) {
+                    push({ type: "delta", text: chunk });
+                  }
                 }
               }
             }
