@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   buildDashboardAiRequest,
-  parseOpenAiError
+  parseOpenAiError,
+  sanitizeAssistantQuery
 } from "@/lib/dashboard-ai";
 
 export const runtime = "nodejs";
@@ -44,14 +45,15 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { query?: string };
     const query = (body.query || "").trim();
-    if (!query) {
+    const sanitized = sanitizeAssistantQuery(query);
+    if (!sanitized.ok) {
       return NextResponse.json(
-        { error: "query is required" },
+        { error: sanitized.reason },
         { status: 400 }
       );
     }
 
-    const aiRequest = await buildDashboardAiRequest(query, true);
+    const aiRequest = await buildDashboardAiRequest(sanitized.value, true);
 
     const upstream = await fetch(aiRequest.url, {
       method: "POST",

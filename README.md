@@ -11,8 +11,12 @@
 ```env
 DATABASE_URL="postgresql://<user>:<password>@<neon-pooler-host>/neondb?sslmode=require&pgbouncer=true"
 DIRECT_URL="postgresql://<user>:<password>@<neon-direct-host>/neondb?sslmode=require"
+PRISMA_CONNECTION_LIMIT="5"
+PRISMA_POOL_TIMEOUT="10"
 AUTH_ENABLED="false"
 NEXTAUTH_SECRET="replace-with-a-long-random-secret"
+AUTH_RATE_LIMIT_WINDOW_MS="900000"
+AUTH_RATE_LIMIT_MAX_ATTEMPTS="10"
 ```
 
 4. Run setup:
@@ -97,7 +101,14 @@ It uses deterministic data logic by default and optionally rewrites responses wi
 ```env
 GEMINI_API_KEY="optional-gemini-api-key"
 GEMINI_MODEL="gemini-2.5-flash"
+AI_QUERY_MAX_LENGTH="500"
 ```
+
+Security hardening included:
+- assistant query length limit (`AI_QUERY_MAX_LENGTH`)
+- prompt-injection pattern rejection at API boundary
+- no full DB dump context (schema + read-only SQL pipeline)
+- auth attempt limiting on NextAuth signin/callback routes
 
 ## New API Modules (Current)
 

@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { answerDashboardQuestion } from "@/lib/dashboard-ai";
+import {
+  answerDashboardQuestion,
+  sanitizeAssistantQuery
+} from "@/lib/dashboard-ai";
 
 export const runtime = "nodejs";
 
@@ -7,14 +10,15 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { query?: string };
     const query = (body.query || "").trim();
-    if (!query) {
+    const sanitized = sanitizeAssistantQuery(query);
+    if (!sanitized.ok) {
       return NextResponse.json(
-        { error: "query is required" },
+        { error: sanitized.reason },
         { status: 400 }
       );
     }
 
-    const result = await answerDashboardQuestion(query);
+    const result = await answerDashboardQuestion(sanitized.value);
     return NextResponse.json({ data: result });
   } catch (error) {
     return NextResponse.json(

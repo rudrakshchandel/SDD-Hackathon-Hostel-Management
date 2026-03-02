@@ -84,6 +84,14 @@ const ALLOWED_TABLES = [
 const SQL_CONTEXT_ROW_LIMIT = Number(process.env.AI_SQL_ROW_LIMIT || 60);
 const SQL_MAX_ROW_LIMIT = Math.max(10, Math.min(200, SQL_CONTEXT_ROW_LIMIT));
 const SCHEMA_CACHE_TTL_MS = 5 * 60 * 1000;
+const AI_MAX_QUERY_LENGTH = Number(process.env.AI_QUERY_MAX_LENGTH || 500);
+const INJECTION_PATTERNS = [
+  /\bignore\s+(all\s+)?(previous|prior)\s+instructions\b/i,
+  /\boverride\s+(system|developer)\s+prompt\b/i,
+  /\b(jailbreak|prompt\s*injection|developer\s*mode)\b/i,
+  /\b(dump|export)\s+(the\s+)?(database|all\s+data)\b/i,
+  /\breveal\s+(all\s+)?(emails?|phone\s*numbers?|aadhaar)\b/i
+];
 
 let cachedSchema: { at: number; data: SchemaMetadata } | null = null;
 
@@ -193,6 +201,33 @@ export function parseRoomSearchFilters(question: string) {
   return params;
 }
 
+export function shouldIncludeRoomMatchesForIntent(intent: AssistantIntent) {
+  return intent === "vacancy" || intent === "room_search";
+}
+
+export function sanitizeAssistantQuery(question: string, maxLength = AI_MAX_QUERY_LENGTH) {
+  const normalized = question.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return { ok: false as const, reason: "query is required" };
+  }
+
+  if (normalized.length > maxLength) {
+    return {
+      ok: false as const,
+      reason: `Query is too long. Maximum supported length is ${maxLength} characters.`
+    };
+  }
+
+  if (INJECTION_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return {
+      ok: false as const,
+      reason: "Unsafe query pattern detected. Rephrase the request in plain business language."
+    };
+  }
+
+  return { ok: true as const, value: normalized };
+}
+
 function getRequiredApiKey() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -231,7 +266,7 @@ function buildGeminiRequestBody({
     systemInstruction: {
       parts: [
         {
-          text: "You are the hostel management AI assistant. Answer only from provided context data. Be concise, practical, and clear. Mention INR as ₹. If data is missing, explicitly say what is missing."
+          text: "You are the hostel management AI assistant. Answer only from provided context data. Be concise, practical, and clear. Mention INR as ₹. If data is missing, explicitly say what is missing. Never output raw email addresses, phone numbers, or Aadhaar numbers."
         }
       ]
     },
@@ -446,26 +481,42 @@ async function getSchemaMetadataCached() {
   return data;
 }
 
-async function buildLightweightContext(question: string) {
+function buildQueryHints(question: string) {
   const floorNumber = parseFloorNumber(question);
   const blockName = parseBlockName(question);
+  return {
+    floorNumber,
+    blockName
+  };
+}
 
-  const roomFilters = parseRoomSearchFilters(question);
-  const roomMatches = (await searchRooms(roomFilters)).slice(0, 8).map((room) => ({
-    roomNumber: room.roomNumber,
-    block: room.block.name,
-    floorNumber: room.floor.floorNumber,
-    sharingType: room.sharingType,
-    vacantBeds: room.counts.vacantBeds,
-    basePrice: room.basePrice,
-    attributes: room.attributes
-  }));
+async function buildFallbackContext(question: string, intent: AssistantIntent) {
+  const hints = buildQueryHints(question);
+  let roomMatches: Array<{
+    roomNumber: string;
+    block: string;
+    floorNumber: number;
+    sharingType: string;
+    vacantBeds: number;
+    basePrice: number | null;
+    attributes: unknown;
+  }> = [];
+
+  if (shouldIncludeRoomMatchesForIntent(intent)) {
+    const roomFilters = parseRoomSearchFilters(question);
+    roomMatches = (await searchRooms(roomFilters)).slice(0, 8).map((room) => ({
+      roomNumber: room.roomNumber,
+      block: room.block.name,
+      floorNumber: room.floor.floorNumber,
+      sharingType: room.sharingType,
+      vacantBeds: room.counts.vacantBeds,
+      basePrice: room.basePrice,
+      attributes: room.attributes
+    }));
+  }
 
   return {
-    hints: {
-      floorNumber,
-      blockName
-    },
+    hints,
     roomMatches
   };
 }
@@ -498,6 +549,7 @@ async function generateSqlFromQuestion({
               "Use only SELECT or WITH ... SELECT.",
               `Only these tables are allowed: ${schema.tableNames.join(", ")}.`,
               `Always include LIMIT <= ${SQL_MAX_ROW_LIMIT}.`,
+              "Never return raw personal identifiers like email addresses, phone numbers, or Aadhaar numbers.",
               "Do not include comments, explanations, or markdown."
             ].join(" ")
           }
@@ -543,12 +595,12 @@ async function executeReadOnlySql(sql: string) {
 
 async function buildSqlContext(question: string, intent: AssistantIntent): Promise<SqlPipelineResult> {
   const schema = await getSchemaMetadataCached();
-  const light = await buildLightweightContext(question);
+  const hints = buildQueryHints(question);
   const sql = await generateSqlFromQuestion({
     question,
     intent,
     schema,
-    hints: light.hints
+    hints
   });
   const rows = await executeReadOnlySql(sql);
 
@@ -556,7 +608,7 @@ async function buildSqlContext(question: string, intent: AssistantIntent): Promi
     sql,
     rowCount: rows.length,
     rows,
-    hints: light.hints
+    hints
   };
 }
 
@@ -591,7 +643,7 @@ async function buildAnswerContext(question: string, intent: AssistantIntent) {
       pipeline
     };
   } catch (error) {
-    const fallback = await buildLightweightContext(question);
+    const fallback = await buildFallbackContext(question, intent);
     return {
       source: "fallback" as const,
       fallback,
@@ -601,10 +653,15 @@ async function buildAnswerContext(question: string, intent: AssistantIntent) {
 }
 
 export async function answerDashboardQuestion(question: string) {
-  const intent = classifyIntent(question);
-  const answerContext = await buildAnswerContext(question, intent);
+  const sanitized = sanitizeAssistantQuery(question);
+  if (!sanitized.ok) {
+    throw new Error(sanitized.reason);
+  }
 
-  const answer = await askModel(question, intent, {
+  const intent = classifyIntent(sanitized.value);
+  const answerContext = await buildAnswerContext(sanitized.value, intent);
+
+  const answer = await askModel(sanitized.value, intent, {
     ...answerContext,
     instructions:
       "If source=sql_pipeline, rely on SQL rows for the answer. If source=fallback, answer conservatively and mention uncertainty."
@@ -625,15 +682,20 @@ export function parseOpenAiError(status: number, payload: GeminiResponsePayload)
 }
 
 export async function buildDashboardAiRequest(question: string, stream = false) {
-  const intent = classifyIntent(question);
-  const answerContext = await buildAnswerContext(question, intent);
+  const sanitized = sanitizeAssistantQuery(question);
+  if (!sanitized.ok) {
+    throw new Error(sanitized.reason);
+  }
+
+  const intent = classifyIntent(sanitized.value);
+  const answerContext = await buildAnswerContext(sanitized.value, intent);
 
   return {
     url: getGeminiEndpoint(stream),
     intent,
     headers: geminiHeaders(),
     body: buildGeminiRequestBody({
-      question,
+      question: sanitized.value,
       intent,
       context: {
         ...answerContext,

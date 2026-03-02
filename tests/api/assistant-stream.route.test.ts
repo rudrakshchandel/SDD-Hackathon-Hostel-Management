@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   buildDashboardAiRequest: vi.fn(),
-  parseOpenAiError: vi.fn()
+  parseOpenAiError: vi.fn(),
+  sanitizeAssistantQuery: vi.fn()
 }));
 
 vi.mock("@/lib/dashboard-ai", () => ({
   buildDashboardAiRequest: mocks.buildDashboardAiRequest,
-  parseOpenAiError: mocks.parseOpenAiError
+  parseOpenAiError: mocks.parseOpenAiError,
+  sanitizeAssistantQuery: mocks.sanitizeAssistantQuery
 }));
 
 describe("/api/assistant/stream POST", () => {
@@ -15,6 +17,11 @@ describe("/api/assistant/stream POST", () => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     mocks.parseOpenAiError.mockReturnValue("upstream failure");
+    mocks.sanitizeAssistantQuery.mockImplementation((query: string) => {
+      const normalized = query.trim();
+      if (!normalized) return { ok: false, reason: "query is required" };
+      return { ok: true, value: normalized };
+    });
     mocks.buildDashboardAiRequest.mockResolvedValue({
       url: "https://example.com/stream",
       intent: "general",
@@ -99,4 +106,3 @@ describe("/api/assistant/stream POST", () => {
     expect(deltaCount).toBeGreaterThan(1);
   });
 });
-
