@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 
 type AssistantResponse = {
@@ -23,10 +23,13 @@ const quickPrompts = [
 
 export default function HomeAiAssistant() {
   const [query, setQuery] = useState("");
+  const [askedQuestion, setAskedQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AssistantResponse | null>(null);
   const answerText = result?.answer?.trim() ?? "";
+
+  const lastQuestion = useMemo(() => askedQuestion.trim(), [askedQuestion]);
 
   async function askAssistant(question: string) {
     setLoading(true);
@@ -111,6 +114,8 @@ export default function HomeAiAssistant() {
     e.preventDefault();
     const text = query.trim();
     if (!text) return;
+    setAskedQuestion(text);
+    setQuery("");
     await askAssistant(text);
   }
 
@@ -157,6 +162,7 @@ export default function HomeAiAssistant() {
             type="button"
             className="glass-card rounded-lg px-3 py-1.5 text-xs text-slate-700"
             onClick={() => {
+              setAskedQuestion(prompt);
               setQuery(prompt);
               void askAssistant(prompt);
             }}
@@ -191,8 +197,15 @@ export default function HomeAiAssistant() {
 
       {result && answerText ? (
         <div className="glass-card whitespace-pre-line rounded-xl p-3 text-sm text-slate-800">
+          {lastQuestion ? (
+            <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">
+              Question: {lastQuestion}
+            </p>
+          ) : null}
           {answerText}
-          {loading ? <span className="ml-1 inline-block h-4 w-[2px] animate-pulse bg-slate-400 align-middle" /> : null}
+          {loading ? (
+            <span className="ml-1 inline-block h-4 w-[2px] animate-pulse bg-slate-400 align-middle" />
+          ) : null}
         </div>
       ) : null}
     </section>

@@ -202,52 +202,56 @@ function buildDeterministicAnswer(
 }
 
 async function maybeRewriteWithAi(question: string, deterministicAnswer: string) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return deterministicAnswer;
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "x-goog-api-key": apiKey,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-        input: [
-          {
-            role: "system",
-            content:
-              "You are a hostel operations assistant for Slack. Keep answers short and actionable. Use bullet points when useful. Do not invent data."
-          },
+        systemInstruction: {
+          parts: [
+            {
+              text: "You are a hostel operations assistant for Slack. Keep answers short and actionable. Use bullet points when useful. Do not invent data."
+            }
+          ]
+        },
+        contents: [
           {
             role: "user",
-            content: `Question: ${question}\n\nStructured answer:\n${deterministicAnswer}`
+            parts: [
+              {
+                text: `Question: ${question}\n\nStructured answer:\n${deterministicAnswer}`
+              }
+            ]
           }
         ]
       })
-    });
+      }
+    );
 
     if (!response.ok) return deterministicAnswer;
 
     const payload = (await response.json()) as {
-      output_text?: string;
-      output?: Array<{
-        content?: Array<{
-          type?: string;
-          text?: string;
-        }>;
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{
+            text?: string;
+          }>;
+        };
       }>;
     };
 
-    if (payload.output_text?.trim()) {
-      return payload.output_text.trim();
-    }
-
-    const fallback = (payload.output || [])
-      .flatMap((block) => block.content || [])
-      .filter((item) => item.type === "output_text" && item.text)
-      .map((item) => item.text as string)
+    const fallback = (payload.candidates || [])
+      .flatMap((candidate) => candidate.content?.parts || [])
+      .map((part) => part.text || "")
       .join("\n")
       .trim();
 

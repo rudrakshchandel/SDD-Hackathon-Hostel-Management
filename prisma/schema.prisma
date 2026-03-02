@@ -234,6 +234,7 @@ model Notice {
   @@index([hostelId, status])
 }
 
+
 enum AdminUserStatus {
   ACTIVE
   INACTIVE

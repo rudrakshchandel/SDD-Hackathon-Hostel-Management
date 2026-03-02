@@ -7,18 +7,24 @@ import {
 export const runtime = "nodejs";
 
 type OpenAiStreamEvent = {
-  type?: string;
-  delta?: string;
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+  }>;
   error?: {
     message?: string;
   };
 };
 
 function extractDelta(event: OpenAiStreamEvent) {
-  if (typeof event.delta === "string" && event.delta.length > 0) {
-    return event.delta;
-  }
-  return null;
+  const text = (event.candidates || [])
+    .flatMap((candidate) => candidate.content?.parts || [])
+    .map((part) => part.text || "")
+    .join("");
+  return text || null;
 }
 
 function sse(data: unknown) {
@@ -37,7 +43,8 @@ export async function POST(request: Request) {
     }
 
     const aiRequest = await buildDashboardAiRequest(query, true);
-    const upstream = await fetch("https://api.openai.com/v1/responses", {
+
+    const upstream = await fetch(aiRequest.url, {
       method: "POST",
       headers: aiRequest.headers,
       body: JSON.stringify(aiRequest.body)
@@ -45,7 +52,13 @@ export async function POST(request: Request) {
 
     if (!upstream.ok) {
       const payload = (await upstream.json()) as {
-        output_text?: string;
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{
+              text?: string;
+            }>;
+          };
+        }>;
         error?: { message?: string; code?: string };
       };
       return NextResponse.json(
@@ -56,7 +69,7 @@ export async function POST(request: Request) {
 
     if (!upstream.body) {
       return NextResponse.json(
-        { error: "OpenAI stream was empty." },
+        { error: "Gemini stream was empty." },
         { status: 500 }
       );
     }
@@ -71,7 +84,10 @@ export async function POST(request: Request) {
           controller.enqueue(encoder.encode(sse(payload)));
         };
 
-        push({ type: "meta", intent: aiRequest.intent });
+        push({
+          type: "meta",
+          intent: aiRequest.intent
+        });
 
         let buffer = "";
 

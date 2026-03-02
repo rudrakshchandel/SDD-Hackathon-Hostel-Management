@@ -3,28 +3,40 @@ import { searchRooms } from "@/lib/rooms";
 
 export type AssistantIntent = "vacancy" | "finance" | "room_search" | "general";
 
-type AiResponsePayload = {
-  output_text?: string;
+type GeminiResponsePayload = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+  }>;
   error?: {
     message?: string;
-    type?: string;
-    code?: string;
+    status?: string;
+    code?: string | number;
   };
-  output?: Array<{
-    content?: Array<{
-      type?: string;
-      text?: string;
+};
+
+type GeminiRequestBody = {
+  systemInstruction: {
+    parts: Array<{
+      text: string;
+    }>;
+  };
+  contents: Array<{
+    role: "user";
+    parts: Array<{
+      text: string;
     }>;
   }>;
 };
 
-type OpenAiRequestBody = {
-  model: string;
-  input: Array<{
-    role: "system" | "user";
-    content: string;
-  }>;
-  stream?: boolean;
+type TableSnapshot<T> = {
+  total: number;
+  returned: number;
+  truncated: boolean;
+  rows: T[];
 };
 
 const ORDINAL_MAP: Record<string, number> = {
@@ -40,12 +52,31 @@ const ORDINAL_MAP: Record<string, number> = {
   tenth: 10
 };
 
-function toNumber(value: unknown) {
+const DB_CONTEXT_ROW_LIMIT = Number(process.env.AI_CONTEXT_ROW_LIMIT || 80);
+const DB_CONTEXT_CACHE_TTL_MS = 20_000;
+
+type CachedDbSnapshot = {
+  at: number;
+  data: Awaited<ReturnType<typeof buildDatabaseSnapshot>>;
+};
+
+let cachedDbSnapshot: CachedDbSnapshot | null = null;
+
+export function toNumber(value: unknown) {
   if (value === null || value === undefined) return 0;
   return Number(value);
 }
 
-function parseFloorNumber(text: string) {
+function tableSnapshot<T>(rows: T[], total: number): TableSnapshot<T> {
+  return {
+    total,
+    returned: rows.length,
+    truncated: rows.length < total,
+    rows
+  };
+}
+
+export function parseFloorNumber(text: string) {
   const normalized = text.toLowerCase();
 
   const numericMatches = [
@@ -66,7 +97,7 @@ function parseFloorNumber(text: string) {
   return undefined;
 }
 
-function parseBlockName(text: string) {
+export function parseBlockName(text: string) {
   const normalized = text.toLowerCase();
   const matchA = normalized.match(/\bblock\s+([a-z0-9-]+)/i);
   if (matchA?.[1]) return matchA[1];
@@ -77,7 +108,7 @@ function parseBlockName(text: string) {
   return undefined;
 }
 
-function classifyIntent(question: string): AssistantIntent {
+export function classifyIntent(question: string): AssistantIntent {
   const normalized = question.toLowerCase();
   if (
     normalized.includes("vacancy") ||
@@ -110,7 +141,7 @@ function classifyIntent(question: string): AssistantIntent {
   return "general";
 }
 
-function parseRoomSearchFilters(question: string) {
+export function parseRoomSearchFilters(question: string) {
   const normalized = question.toLowerCase();
   const params = new URLSearchParams();
   params.set("availability", "vacant");
@@ -144,6 +175,324 @@ function parseRoomSearchFilters(question: string) {
   if (minBudget?.[1]) params.set("minPrice", minBudget[1]);
 
   return params;
+}
+
+async function buildDatabaseSnapshot() {
+  const limit = Math.max(20, Math.min(250, DB_CONTEXT_ROW_LIMIT));
+
+  const [
+    hostelTotal,
+    blockTotal,
+    floorTotal,
+    roomTotal,
+    bedTotal,
+    residentTotal,
+    allocationTotal,
+    invoiceTotal,
+    paymentTotal,
+    complaintTotal,
+    noticeTotal,
+    hostels,
+    blocks,
+    floors,
+    rooms,
+    beds,
+    residents,
+    allocations,
+    invoices,
+    payments,
+    complaints,
+    notices
+  ] = await Promise.all([
+    prisma.hostel.count(),
+    prisma.block.count(),
+    prisma.floor.count(),
+    prisma.room.count(),
+    prisma.bed.count(),
+    prisma.resident.count(),
+    prisma.allocation.count(),
+    prisma.invoice.count(),
+    prisma.payment.count(),
+    prisma.complaint.count(),
+    prisma.notice.count(),
+    prisma.hostel.findMany({
+      orderBy: { createdAt: "asc" },
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        contactNumber: true,
+        timezone: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    }),
+    prisma.block.findMany({
+      orderBy: [{ name: "asc" }],
+      take: limit,
+      select: {
+        id: true,
+        hostelId: true,
+        name: true,
+        description: true,
+        createdAt: true
+      }
+    }),
+    prisma.floor.findMany({
+      orderBy: [{ floorNumber: "asc" }],
+      take: limit,
+      select: {
+        id: true,
+        blockId: true,
+        floorNumber: true,
+        label: true,
+        createdAt: true
+      }
+    }),
+    prisma.room.findMany({
+      where: { status: { not: "INACTIVE" } },
+      orderBy: [{ roomNumber: "asc" }],
+      take: limit,
+      select: {
+        id: true,
+        floorId: true,
+        roomNumber: true,
+        sharingType: true,
+        genderRestriction: true,
+        status: true,
+        basePrice: true,
+        attributes: true,
+        createdAt: true
+      }
+    }),
+    prisma.bed.findMany({
+      orderBy: [{ bedNumber: "asc" }],
+      take: limit,
+      select: {
+        id: true,
+        roomId: true,
+        bedNumber: true,
+        status: true,
+        createdAt: true
+      }
+    }),
+    prisma.resident.findMany({
+      orderBy: [{ createdAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        fullName: true,
+        gender: true,
+        status: true,
+        contact: true,
+        email: true,
+        idProofType: true,
+        idProofNumber: true,
+        createdAt: true
+      }
+    }),
+    prisma.allocation.findMany({
+      orderBy: [{ createdAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        residentId: true,
+        bedId: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+        notes: true,
+        createdAt: true
+      }
+    }),
+    prisma.invoice.findMany({
+      orderBy: [{ createdAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        residentId: true,
+        allocationId: true,
+        periodStart: true,
+        periodEnd: true,
+        totalAmount: true,
+        dueDate: true,
+        status: true,
+        createdAt: true
+      }
+    }),
+    prisma.payment.findMany({
+      orderBy: [{ createdAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        invoiceId: true,
+        residentId: true,
+        amount: true,
+        method: true,
+        status: true,
+        reference: true,
+        receivedAt: true,
+        createdAt: true
+      }
+    }),
+    prisma.complaint.findMany({
+      orderBy: [{ createdAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        residentId: true,
+        hostelId: true,
+        roomId: true,
+        category: true,
+        title: true,
+        description: true,
+        status: true,
+        resolutionNotes: true,
+        createdAt: true,
+        closedAt: true
+      }
+    }),
+    prisma.notice.findMany({
+      orderBy: [{ createdAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        hostelId: true,
+        title: true,
+        body: true,
+        audience: true,
+        status: true,
+        publishedAt: true,
+        createdAt: true
+      }
+    })
+  ]);
+
+  const schema = {
+    hostel: [
+      "id",
+      "name",
+      "address",
+      "contactNumber",
+      "timezone",
+      "status",
+      "createdAt",
+      "updatedAt"
+    ],
+    block: ["id", "hostelId", "name", "description", "createdAt"],
+    floor: ["id", "blockId", "floorNumber", "label", "createdAt"],
+    room: [
+      "id",
+      "floorId",
+      "roomNumber",
+      "sharingType",
+      "genderRestriction",
+      "status",
+      "basePrice",
+      "attributes",
+      "createdAt"
+    ],
+    bed: ["id", "roomId", "bedNumber", "status", "createdAt"],
+    resident: [
+      "id",
+      "fullName",
+      "gender",
+      "status",
+      "contact",
+      "email",
+      "idProofType",
+      "idProofNumber",
+      "createdAt"
+    ],
+    allocation: [
+      "id",
+      "residentId",
+      "bedId",
+      "status",
+      "startDate",
+      "endDate",
+      "notes",
+      "createdAt"
+    ],
+    invoice: [
+      "id",
+      "residentId",
+      "allocationId",
+      "periodStart",
+      "periodEnd",
+      "totalAmount",
+      "dueDate",
+      "status",
+      "createdAt"
+    ],
+    payment: [
+      "id",
+      "invoiceId",
+      "residentId",
+      "amount",
+      "method",
+      "status",
+      "reference",
+      "receivedAt",
+      "createdAt"
+    ],
+    complaint: [
+      "id",
+      "residentId",
+      "hostelId",
+      "roomId",
+      "category",
+      "title",
+      "description",
+      "status",
+      "resolutionNotes",
+      "createdAt",
+      "closedAt"
+    ],
+    notice: [
+      "id",
+      "hostelId",
+      "title",
+      "body",
+      "audience",
+      "status",
+      "publishedAt",
+      "createdAt"
+    ]
+  };
+
+  return {
+    metadata: {
+      generatedAt: new Date().toISOString(),
+      rowLimitPerTable: limit
+    },
+    schema,
+    tables: {
+      hostel: tableSnapshot(hostels, hostelTotal),
+      block: tableSnapshot(blocks, blockTotal),
+      floor: tableSnapshot(floors, floorTotal),
+      room: tableSnapshot(rooms, roomTotal),
+      bed: tableSnapshot(beds, bedTotal),
+      resident: tableSnapshot(residents, residentTotal),
+      allocation: tableSnapshot(allocations, allocationTotal),
+      invoice: tableSnapshot(invoices, invoiceTotal),
+      payment: tableSnapshot(payments, paymentTotal),
+      complaint: tableSnapshot(complaints, complaintTotal),
+      notice: tableSnapshot(notices, noticeTotal)
+    }
+  };
+}
+
+async function getDatabaseSnapshotCached() {
+  const now = Date.now();
+  if (cachedDbSnapshot && now - cachedDbSnapshot.at <= DB_CONTEXT_CACHE_TTL_MS) {
+    return cachedDbSnapshot.data;
+  }
+  const data = await buildDatabaseSnapshot();
+  cachedDbSnapshot = { at: now, data };
+  return data;
 }
 
 async function buildDashboardContext(question: string) {
@@ -240,14 +589,17 @@ async function buildDashboardContext(question: string) {
   });
 
   const roomFilters = parseRoomSearchFilters(question);
-  const roomMatches = (await searchRooms(roomFilters)).slice(0, 8).map((room) => ({
+  const roomMatches = (await searchRooms(roomFilters)).slice(0, 20).map((room) => ({
     roomNumber: room.roomNumber,
     block: room.block.name,
     floorNumber: room.floor.floorNumber,
     sharingType: room.sharingType,
     vacantBeds: room.counts.vacantBeds,
-    basePrice: room.basePrice
+    basePrice: room.basePrice,
+    attributes: room.attributes
   }));
+
+  const database = await getDatabaseSnapshotCached();
 
   return {
     hostel,
@@ -262,16 +614,17 @@ async function buildDashboardContext(question: string) {
       dues
     },
     floorVacancy,
-    roomMatches
+    roomMatches,
+    database
   };
 }
 
-async function askChatGpt(question: string, intent: AssistantIntent, context: unknown) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
+async function askModel(question: string, intent: AssistantIntent, context: unknown) {
+  const response = await fetch(getGeminiEndpoint(false), {
     method: "POST",
-    headers: openAiHeaders(),
+    headers: geminiHeaders(),
     body: JSON.stringify(
-      buildOpenAiRequestBody({
+      buildGeminiRequestBody({
         question,
         intent,
         context
@@ -279,34 +632,21 @@ async function askChatGpt(question: string, intent: AssistantIntent, context: un
     )
   });
 
-  const payload = (await response.json()) as AiResponsePayload;
+  const payload = (await response.json()) as GeminiResponsePayload;
 
   if (!response.ok) {
     throw new Error(parseOpenAiError(response.status, payload));
   }
 
-  if (payload.output_text?.trim()) {
-    return payload.output_text.trim();
-  }
-
-  const fallback = (payload.output || [])
-    .flatMap((entry) => entry.content || [])
-    .filter((item) => item.type === "output_text" && item.text)
-    .map((item) => item.text as string)
-    .join("\n")
-    .trim();
-
-  if (!fallback) {
-    throw new Error("OpenAI returned an empty response.");
-  }
-
-  return fallback;
+  const text = extractGeminiText(payload);
+  if (!text) throw new Error("Gemini returned an empty response.");
+  return text;
 }
 
 export async function answerDashboardQuestion(question: string) {
   const intent = classifyIntent(question);
   const context = await buildDashboardContext(question);
-  const answer = await askChatGpt(question, intent, context);
+  const answer = await askModel(question, intent, context);
 
   return {
     intent,
@@ -316,72 +656,90 @@ export async function answerDashboardQuestion(question: string) {
 }
 
 function getRequiredApiKey() {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "OPENAI_API_KEY is missing. Add it to .env and restart the dev server."
+      "GEMINI_API_KEY is missing. Add it to .env and restart the dev server."
     );
   }
   return apiKey;
 }
 
-function openAiHeaders() {
+function geminiHeaders() {
   return {
-    Authorization: `Bearer ${getRequiredApiKey()}`,
+    "x-goog-api-key": getRequiredApiKey(),
     "Content-Type": "application/json"
   };
 }
 
-function buildOpenAiRequestBody({
+function getGeminiEndpoint(stream: boolean) {
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const action = stream ? "streamGenerateContent?alt=sse" : "generateContent";
+  return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model
+  )}:${action}`;
+}
+
+function buildGeminiRequestBody({
   question,
   intent,
-  context,
-  stream = false
+  context
 }: {
   question: string;
   intent: AssistantIntent;
   context: unknown;
-  stream?: boolean;
-}): OpenAiRequestBody {
+}): GeminiRequestBody {
   return {
-    model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-    stream,
-    input: [
-      {
-        role: "system",
-        content:
-          "You are the hostel management AI assistant. Answer only from provided context data. Be concise, practical, and clear. Mention INR as ₹. If data is missing, explicitly say what is missing."
-      },
+    systemInstruction: {
+      parts: [
+        {
+          text: "You are the hostel management AI assistant. Answer only from provided context data. Be concise, practical, and clear. Mention INR as ₹. If data is missing, explicitly say what is missing."
+        }
+      ]
+    },
+    contents: [
       {
         role: "user",
-        content: [
-          `Intent guess: ${intent}`,
-          `Question: ${question}`,
-          `Context JSON: ${JSON.stringify(context)}`
-        ].join("\n\n")
+        parts: [
+          {
+            text: [
+              `Intent guess: ${intent}`,
+              `Question: ${question}`,
+              `Context JSON: ${JSON.stringify(context)}`
+            ].join("\n\n")
+          }
+        ]
       }
     ]
   };
 }
 
-export function parseOpenAiError(status: number, payload: AiResponsePayload) {
+function extractGeminiText(payload: GeminiResponsePayload) {
+  return (payload.candidates || [])
+    .flatMap((candidate) => candidate.content?.parts || [])
+    .map((part) => part.text || "")
+    .join("")
+    .trim();
+}
+
+export function parseOpenAiError(status: number, payload: GeminiResponsePayload) {
   const errText =
-    payload.error?.message || payload.output_text || "OpenAI request failed";
+    payload.error?.message || extractGeminiText(payload) || "Gemini request failed";
   const errCode = payload.error?.code ? ` [${payload.error.code}]` : "";
-  return `OpenAI error (${status})${errCode}: ${errText}`;
+  return `Gemini error (${status})${errCode}: ${errText}`;
 }
 
 export async function buildDashboardAiRequest(question: string, stream = false) {
   const intent = classifyIntent(question);
   const context = await buildDashboardContext(question);
   return {
+    url: getGeminiEndpoint(stream),
     intent,
-    headers: openAiHeaders(),
-    body: buildOpenAiRequestBody({
+    headers: geminiHeaders(),
+    body: buildGeminiRequestBody({
       question,
       intent,
-      context,
-      stream
+      context
     })
   };
 }

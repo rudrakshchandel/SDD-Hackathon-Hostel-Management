@@ -54,13 +54,13 @@ Add these in `.env`:
 SLACK_ENABLED="false"
 SLACK_SIGNING_SECRET="your-slack-signing-secret"
 SLACK_BOT_TOKEN="xoxb-your-bot-token"
-OPENAI_API_KEY="optional-openai-api-key"
-OPENAI_MODEL="gpt-4.1-mini"
+GEMINI_API_KEY="optional-gemini-api-key"
+GEMINI_MODEL="gemini-2.5-flash"
 ```
 
 - Keep `SLACK_ENABLED="false"` until you are ready to go live with Slack.
 - When ready, change to `SLACK_ENABLED="true"` and restart the app.
-- If `OPENAI_API_KEY` is missing, the app still works with deterministic (non-AI) responses.
+- If `GEMINI_API_KEY` is missing, the app still works with deterministic (non-AI) responses.
 
 ### 3. Configure Slack endpoints
 
@@ -91,9 +91,9 @@ The dashboard now includes an AI assistant panel at `/dashboard` for:
 - Finance snapshot (invoiced, collected, dues)
 - Streaming responses (ChatGPT-style token-by-token output)
 
-It uses deterministic data logic by default and optionally rewrites responses with OpenAI when configured:
+It uses deterministic data logic by default and optionally rewrites responses with Gemini when configured:
 
 ```env
-OPENAI_API_KEY="optional-openai-api-key"
-OPENAI_MODEL="gpt-4.1-mini"
+GEMINI_API_KEY="optional-gemini-api-key"
+GEMINI_MODEL="gemini-2.5-flash"
 ```
