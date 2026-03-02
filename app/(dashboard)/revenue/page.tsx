@@ -208,6 +208,14 @@ export default async function RevenuePage() {
         <p className="text-sm text-slate-600">
           Track paid vs unpaid residents across the full hostel hierarchy.
         </p>
+        <div className="mt-3">
+          <a
+            href="/api/reports/fees"
+            className="glass-btn-secondary inline-flex min-h-11 items-center rounded-xl px-3 py-2 text-sm font-medium"
+          >
+            Download Fees CSV
+          </a>
+        </div>
       </header>
 
       <section className="section-enter section-delay-2 grid gap-3 md:grid-cols-3">

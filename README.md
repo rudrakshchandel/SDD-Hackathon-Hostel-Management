@@ -90,10 +90,31 @@ The dashboard now includes an AI assistant panel at `/dashboard` for:
 - Vacancy checks (floor/block)
 - Finance snapshot (invoiced, collected, dues)
 - Streaming responses (ChatGPT-style token-by-token output)
+- Markdown rendering in responses (safe/sanitized)
 
 It uses deterministic data logic by default and optionally rewrites responses with Gemini when configured:
 
 ```env
 GEMINI_API_KEY="optional-gemini-api-key"
 GEMINI_MODEL="gemini-2.5-flash"
+```
+
+## New API Modules (Current)
+
+- `GET/POST /api/fees`
+- `POST /api/fees/[feeId]/payments`
+- `GET/POST /api/complaints`
+- `PATCH /api/complaints/[complaintId]`
+- `GET/POST /api/notices`
+- `PATCH /api/notices/[noticeId]`
+- `GET /api/reports/fees` (CSV export)
+- `POST /api/residents/transfer`
+
+## Verification Commands
+
+```bash
+npm run lint
+npm run test
+npm run test:api
+npm run build
 ```

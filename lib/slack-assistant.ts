@@ -87,6 +87,21 @@ function parseVacancyIntent(text: string): VacancyIntent | null {
   return { floorNumber, blockName };
 }
 
+function isFinanceIntent(text: string) {
+  const normalized = text.toLowerCase();
+  return (
+    normalized.includes("finance") ||
+    normalized.includes("revenue") ||
+    normalized.includes("dues") ||
+    normalized.includes("payment")
+  );
+}
+
+function isOccupancyIntent(text: string) {
+  const normalized = text.toLowerCase();
+  return normalized.includes("occupancy") || normalized.includes("occupied");
+}
+
 async function fetchFloorVacancyStats(
   intent: VacancyIntent
 ): Promise<FloorVacancyStats[]> {
@@ -261,12 +276,69 @@ async function maybeRewriteWithAi(question: string, deterministicAnswer: string)
   }
 }
 
+async function buildFinanceAnswer() {
+  const [invoiceAggregate, paymentAggregate, openInvoices] = await Promise.all([
+    prisma.invoice.aggregate({
+      where: { status: { not: "CANCELLED" } },
+      _sum: { totalAmount: true }
+    }),
+    prisma.payment.aggregate({
+      where: { status: "COMPLETED" },
+      _sum: { amount: true }
+    }),
+    prisma.invoice.count({
+      where: {
+        status: { in: ["DRAFT", "ISSUED", "PARTIALLY_PAID", "OVERDUE"] }
+      }
+    })
+  ]);
+
+  const invoiced = Number(invoiceAggregate._sum.totalAmount || 0);
+  const collected = Number(paymentAggregate._sum.amount || 0);
+  const due = Math.max(0, invoiced - collected);
+
+  return [
+    `Finance snapshot: Invoiced ₹${invoiced.toLocaleString("en-IN")}, Collected ₹${collected.toLocaleString("en-IN")}, Due ₹${due.toLocaleString("en-IN")}.`,
+    `Open invoices: ${openInvoices}`
+  ].join("\n");
+}
+
+async function buildOccupancyAnswer() {
+  const [totalBeds, occupiedBedRows] = await Promise.all([
+    prisma.bed.count(),
+    prisma.allocation.findMany({
+      where: {
+        status: "ACTIVE",
+        resident: { status: "ACTIVE" }
+      },
+      select: { bedId: true },
+      distinct: ["bedId"]
+    })
+  ]);
+
+  const occupiedBeds = occupiedBedRows.length;
+  const vacantBeds = Math.max(0, totalBeds - occupiedBeds);
+  return `Occupancy snapshot: ${occupiedBeds}/${totalBeds} beds occupied, ${vacantBeds} vacant.`;
+}
+
 export async function answerSlackQuery(question: string) {
+  if (isFinanceIntent(question)) {
+    const deterministicAnswer = await buildFinanceAnswer();
+    return maybeRewriteWithAi(question, deterministicAnswer);
+  }
+
+  if (isOccupancyIntent(question)) {
+    const deterministicAnswer = await buildOccupancyAnswer();
+    return maybeRewriteWithAi(question, deterministicAnswer);
+  }
+
   const intent = parseVacancyIntent(question);
   if (!intent) {
     return [
-      "I can help with vacancy queries.",
+      "I can help with vacancy, occupancy, and finance queries.",
       'Try: "vacancy in first floor"',
+      'Try: "occupancy summary"',
+      'Try: "finance summary"',
       'Try: "vacancy in floor 2 block A"'
     ].join("\n");
   }

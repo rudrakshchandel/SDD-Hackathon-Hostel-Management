@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyIntent,
+  validateReadOnlySql,
   parseBlockName,
   parseFloorNumber,
   parseOpenAiError,
@@ -43,6 +44,13 @@ describe("dashboard-ai parsing helpers", () => {
     expect(params.get("availability")).toBe("vacant");
   });
 
+  it("keeps default room filters for generic room query", () => {
+    const params = parseRoomSearchFilters("show rooms");
+    expect(params.get("ac")).toBe("any");
+    expect(params.get("smoking")).toBe("any");
+    expect(params.get("gender")).toBe("ANY");
+  });
+
   it("formats provider error with status and code", () => {
     const message = parseOpenAiError(429, {
       error: {
@@ -53,5 +61,38 @@ describe("dashboard-ai parsing helpers", () => {
     expect(message).toContain("429");
     expect(message).toContain("rate_limit_exceeded");
     expect(message).toContain("Too many requests");
+  });
+
+  it("accepts read-only SELECT SQL with allowlisted tables", () => {
+    const result = validateReadOnlySql(
+      "SELECT room_number FROM room ORDER BY room_number",
+      ["room", "bed"]
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.sql).toContain("LIMIT");
+    }
+  });
+
+  it("rejects mutating SQL", () => {
+    const result = validateReadOnlySql(
+      "UPDATE room SET status = 'INACTIVE'",
+      ["room"]
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain("SELECT/CTE");
+    }
+  });
+
+  it("rejects non-allowlisted tables", () => {
+    const result = validateReadOnlySql(
+      "SELECT * FROM users",
+      ["room", "bed"]
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain("allowlisted");
+    }
   });
 });
