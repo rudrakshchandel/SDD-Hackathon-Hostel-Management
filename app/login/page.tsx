@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authEnabled, authOptions, googleOAuthConfigured } from "@/lib/auth";
+import LoginCredentialsForm from "./login-credentials-form";
 
 export default async function LoginPage() {
   if (!authEnabled) {
@@ -23,22 +24,18 @@ export default async function LoginPage() {
           </p>
           <h1 className="mt-2 text-2xl font-semibold text-slate-900">Sign In</h1>
           <p className="mt-1 text-sm text-slate-700">
-            Sign in with Google to access the dashboard, rooms, and hostel modules.
+            Sign in with admin credentials to access the dashboard, rooms, and hostel modules.
           </p>
         </div>
+        <LoginCredentialsForm />
         {googleOAuthConfigured ? (
           <a
             href="/api/auth/signin/google?callbackUrl=/dashboard"
-            className="glass-btn-primary inline-flex min-h-11 w-full items-center justify-center rounded-xl px-4 py-2 text-sm font-medium"
+            className="glass-btn-secondary inline-flex min-h-11 w-full items-center justify-center rounded-xl px-4 py-2 text-sm font-medium"
           >
             Continue with Google
           </a>
-        ) : (
-          <div className="rounded-xl border border-amber-300/70 bg-amber-100/70 p-3 text-sm text-amber-900">
-            Google OAuth is not configured yet. Set `GOOGLE_CLIENT_ID` and
-            `GOOGLE_CLIENT_SECRET` in your env file.
-          </div>
-        )}
+        ) : null}
       </section>
     </main>
   );

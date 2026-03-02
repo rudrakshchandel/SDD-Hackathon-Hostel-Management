@@ -51,6 +51,8 @@ Based on:
 - FR-053: System must support `/occupancy` via Slack.
 - FR-054: System must support `/complaints` via Slack.
 - FR-055: Slack commands must call the same application APIs used by the web UI (no separate backend logic).
+- FR-056: In Room Discovery, selecting a room from long room lists must keep the Room Details panel visible (sticky split-pane behavior on desktop) so admins do not need to scroll back to the top.
+- FR-057: Resident transfer flow must prevent transfer to beds under maintenance by design (target-bed options must exclude or clearly disable maintenance beds before submit), with a clear user-facing validation message.
 
 ### Added Non-Functional Requirements (Responsive UI)
 - NFR-006: Admin web UI must be fully usable on mobile screens down to 360px width.
@@ -59,6 +61,11 @@ Based on:
 - NFR-009: Responsive behavior must be verified at minimum viewport widths: 360px, 390px, 768px, and 1024px.
 - NFR-010: Frontend UI must be implemented through a reusable component layer based on shadcn/ui primitives.
 - NFR-011: The visual system must use an Apple-like liquid glass style (translucent layered surfaces, blur, soft borders, subtle gradients, and restrained motion), adapted for accessibility and content clarity.
+- NFR-012: Success/error feedback for in-page actions (add/edit/delete/transfer/allocate) must be shown via viewport-visible toast/snackbar notifications, not only top-of-page banners that require manual scrolling.
+- NFR-013: For async mutation actions (for example `Save Block`, `Save Floor`, `Save Room`), the triggering button must show an in-button loading indicator/spinner and disabled state until the API request completes.
+- NFR-014: In list-based actions (for example resident transfer inside room occupants), loading indicators and labels must be scoped to the specific row/item action; other rows must not show unrelated loading text (for example all buttons showing `Transferring...`).
+- NFR-015: Loading feedback in action buttons must use a visual spinner icon (not only text ellipsis such as `...`), and iconography should use Lucide React icons for consistent UI language where applicable.
+- NFR-016: Platform dependencies must include a tracked decision item for upgrading Next.js to the latest stable version; before upgrade, the team must review compatibility impact (App Router behavior, NextAuth integration, React version alignment, build/runtime changes) and document an implementation plan.
 
 #### Responsive Acceptance Criteria
 - Layouts reflow from multi-column to single-column where needed.
@@ -190,6 +197,13 @@ Note: This is a design-system directive, not a business requirement. Keep it in 
 - Expand Slack command coverage (`/allocate`, `/complaints`, richer `/occupancy`) and add deeper integration tests.
 - Run a dedicated mobile responsiveness pass for core dashboard pages and validate against NFR-006 to NFR-009 breakpoints.
 - Continue migrating all form controls to shared component primitives for full NFR-010 coverage.
+- Implement room list/details split-pane UX in `/rooms` so details remain visible while browsing long room lists (FR-056).
+- Replace top-only operation messages with shadcn-style toast/snackbar notifications across dashboard modules (NFR-012).
+- Update transfer candidate-bed picker to block maintenance beds before submission and improve validation UX (FR-057).
+- Add in-button loading state for async save/update actions in hostel/rooms flows (for example `Save Block`) so request progress is visible without relying only on toasts (NFR-013).
+- Scope transfer loading UI state per resident row in `/rooms` so only the clicked transfer action shows `Transferring...` and loading-disabled behavior (NFR-014).
+- Standardize button loading UX across modules to spinner-first indicators (Lucide React icons) instead of text-only ellipsis states (NFR-015).
+- Run a formal upgrade discussion and migration plan for moving from current Next.js version to latest stable, including risk assessment and validation checklist (NFR-016).
 
 ## 8) Change Log Entry (Proposed)
 
@@ -199,3 +213,8 @@ Note: This is a design-system directive, not a business requirement. Keep it in 
 | 2026-02-28 | v0.2-draft.1 | Codex | Added explicit mobile-responsive non-functional requirements (NFR-006 to NFR-009), acceptance criteria, and current implementation status. |
 | 2026-02-28 | v0.2-draft.2 | Codex | Added explicit shadcn/ui component-system requirement and Apple-like liquid glass design requirement (NFR-010, NFR-011), and updated implementation status mapping. |
 | 2026-03-02 | v0.2-draft.3 | Codex | Updated implementation snapshot after Task 7-10.1 work: auth protection updates, resident transfer lifecycle, fee/complaint/notices/report APIs, Slack flag tests, and markdown+stream AI assistant improvements. |
+| 2026-03-02 | v0.2-draft.4 | Codex | Added UX and validation requirements for rooms split-pane visibility, toast/snackbar action feedback, and transfer-bed maintenance restriction handling (FR-056, FR-057, NFR-012). |
+| 2026-03-02 | v0.2-draft.5 | Codex | Added pending UX requirement for async action loading visibility (in-button spinner/disabled state) for save/update flows such as `Save Block` (NFR-013). |
+| 2026-03-02 | v0.2-draft.6 | Codex | Added pending UX requirement for row-scoped loading state in list actions, specifically transfer buttons in Rooms occupant rows (NFR-014). |
+| 2026-03-02 | v0.2-draft.7 | Codex | Added pending UX requirement to standardize button loading indicators with spinner icons (Lucide React) instead of text-only ellipsis states (NFR-015). |
+| 2026-03-02 | v0.2-draft.8 | Codex | Added pending platform requirement to discuss and plan Next.js upgrade to latest stable with compatibility/risk review before implementation (NFR-016). |

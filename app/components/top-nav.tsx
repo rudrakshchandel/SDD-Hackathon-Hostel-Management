@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -56,8 +57,16 @@ export default function TopNav() {
           prefetch
           onMouseEnter={() => prefetchRoute("/")}
           onFocus={() => prefetchRoute("/")}
-          className="inline-flex min-h-11 items-center px-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600 transition hover:text-slate-800"
+          className="inline-flex min-h-11 items-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600 transition hover:text-slate-800"
         >
+          <Image
+            src="/hostel-management-logo.png"
+            alt="Hostel Management logo"
+            width={22}
+            height={22}
+            className="rounded-md"
+            priority
+          />
           Hostel Management
         </Link>
         <div className="flex flex-wrap gap-2">

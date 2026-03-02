@@ -6,11 +6,13 @@ import {
   useQuery,
   useQueryClient
 } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import LiquidLoader from "@/app/components/liquid-loader";
+import { useToast } from "@/lib/toast-context";
 
 type RoomListItem = {
   id: string;
@@ -23,7 +25,7 @@ type RoomListItem = {
   block: { id: string; name: string };
   floor: { id: string; floorNumber: number; label: string | null };
   counts: { totalBeds: number; occupiedBeds: number; vacantBeds: number };
-  availableBeds: Array<{ id: string; bedNumber: string }>;
+  availableBeds: Array<{ id: string; bedNumber: string; status: string }>;
 };
 
 type RoomDetail = {
@@ -133,6 +135,10 @@ function labelFor(
   fallback = value
 ) {
   return dictionary[value] ?? fallback;
+}
+
+function mutationErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Action failed unexpectedly.";
 }
 
 function formatInr(value: number | null) {
@@ -270,8 +276,8 @@ export default function RoomsDashboardClient() {
   const [transferTargetByResident, setTransferTargetByResident] = useState<
     Record<string, string>
   >({});
-  const [message, setMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const query = useMemo(() => filtersToQuery(filters), [filters]);
 
   const roomsQuery = useQuery({
@@ -312,7 +318,7 @@ export default function RoomsDashboardClient() {
       payload: { residentId?: string; resident?: Record<string, string> };
     }) => api("/api/residents/allocate", "POST", { bedId, ...payload }),
     onSuccess: async () => {
-      setMessage("Bed allocated successfully");
+      showToast("Bed allocated successfully", "success");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["rooms"] }),
         queryClient.invalidateQueries({ queryKey: ["residents"] }),
@@ -322,6 +328,9 @@ export default function RoomsDashboardClient() {
             })
           : Promise.resolve()
       ]);
+    },
+    onError: (error) => {
+      showToast(mutationErrorMessage(error), "error");
     }
   });
 
@@ -329,7 +338,7 @@ export default function RoomsDashboardClient() {
     mutationFn: ({ residentId }: { residentId: string }) =>
       api("/api/residents/vacate", "POST", { residentId }),
     onSuccess: async () => {
-      setMessage("Resident vacated successfully");
+      showToast("Resident vacated successfully", "success");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["rooms"] }),
         queryClient.invalidateQueries({ queryKey: ["residents"] }),
@@ -339,6 +348,9 @@ export default function RoomsDashboardClient() {
             })
           : Promise.resolve()
       ]);
+    },
+    onError: (error) => {
+      showToast(mutationErrorMessage(error), "error");
     }
   });
 
@@ -351,7 +363,7 @@ export default function RoomsDashboardClient() {
       targetBedId: string;
     }) => api("/api/residents/transfer", "POST", { residentId, targetBedId }),
     onSuccess: async () => {
-      setMessage("Resident transferred successfully");
+      showToast("Resident transferred successfully", "success");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["rooms"] }),
         queryClient.invalidateQueries({ queryKey: ["residents"] }),
@@ -361,6 +373,9 @@ export default function RoomsDashboardClient() {
             })
           : Promise.resolve()
       ]);
+    },
+    onError: (error) => {
+      showToast(mutationErrorMessage(error), "error");
     }
   });
 
@@ -368,7 +383,6 @@ export default function RoomsDashboardClient() {
     bedId: string,
     payload: { residentId?: string; resident?: Record<string, string> }
   ) {
-    setMessage(null);
     try {
       await allocateMutation.mutateAsync({ bedId, payload });
     } catch {
@@ -377,7 +391,6 @@ export default function RoomsDashboardClient() {
   }
 
   async function vacate(residentId: string) {
-    setMessage(null);
     try {
       await vacateMutation.mutateAsync({ residentId });
     } catch {
@@ -387,7 +400,6 @@ export default function RoomsDashboardClient() {
 
   async function transfer(residentId: string, targetBedId: string) {
     if (!targetBedId) return;
-    setMessage(null);
     try {
       await transferMutation.mutateAsync({ residentId, targetBedId });
       setTransferTargetByResident((prev) => ({ ...prev, [residentId]: "" }));
@@ -404,10 +416,12 @@ export default function RoomsDashboardClient() {
   const transferTargets = useMemo(
     () =>
       rooms.flatMap((room) =>
-        room.availableBeds.map((bed) => ({
-          id: bed.id,
-          label: `${room.block.name}/F${room.floor.floorNumber} • Room ${room.roomNumber} • Bed ${bed.bedNumber}`
-        }))
+        room.availableBeds
+          .filter((target) => target.status === "AVAILABLE")
+          .map((bed) => ({
+            id: bed.id,
+            label: `${room.block.name}/F${room.floor.floorNumber} • Room ${room.roomNumber} • Bed ${bed.bedNumber}`
+          }))
       ),
     [rooms]
   );
@@ -421,9 +435,6 @@ export default function RoomsDashboardClient() {
     roomsQuery.error ??
     roomDetailQuery.error ??
     residentsQuery.error ??
-    allocateMutation.error ??
-    vacateMutation.error ??
-    transferMutation.error ??
     null;
   const error =
     pageError instanceof Error ? pageError.message : pageError ? String(pageError) : null;
@@ -460,12 +471,6 @@ export default function RoomsDashboardClient() {
           {error}
         </div>
       ) : null}
-      {message ? (
-        <div className="section-enter section-delay-2 rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700">
-          {message}
-        </div>
-      ) : null}
-
       <section className="glass-panel section-enter section-delay-2 p-4">
         <h2 className="mb-3 text-lg font-medium">Filters</h2>
         <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-5">
@@ -562,139 +567,164 @@ export default function RoomsDashboardClient() {
         </div>
       </section>
 
-      <section className="section-enter section-delay-3 grid gap-4 lg:grid-cols-2">
-        <div className="space-y-3">
-          <h2 className="text-lg font-medium">Rooms</h2>
-          {rooms.length === 0 ? (
-            <p className="glass-card p-3 text-sm text-slate-600">No rooms matched.</p>
-          ) : null}
-          {rooms.map((room) => (
-            <button
+      <section className="section-enter section-delay-3 space-y-3">
+        <h2 className="text-lg font-medium">Rooms</h2>
+        {rooms.length === 0 ? (
+          <p className="glass-card p-3 text-sm text-slate-600">No rooms matched.</p>
+        ) : null}
+        {rooms.map((room) => {
+          const isSelected = selectedRoomId === room.id;
+          const selectedRoomDetails =
+            isSelected && selectedRoom?.id === room.id ? selectedRoom : null;
+
+          return (
+            <div
               key={room.id}
-              type="button"
-              onClick={() => setSelectedRoomId(room.id)}
               className={`glass-card w-full p-4 text-left ${
-                selectedRoomId === room.id ? "ring-2 ring-sky-300" : ""
+                isSelected ? "ring-2 ring-sky-300" : ""
               }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium">
-                    Room {room.roomNumber} - {room.block.name}/F{room.floor.floorNumber}
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    {labelFor(room.sharingType, roomTypeLabels)} | Gender:{" "}
-                    {labelFor(room.genderRestriction, genderRestrictionLabels)} | Price:{" "}
-                    {formatInr(room.basePrice)}
-                  </p>
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedRoomId((current) => (current === room.id ? null : room.id))
+                }
+                className="w-full text-left border-0 bg-transparent p-0 shadow-none backdrop-blur-none hover:translate-y-0 hover:bg-transparent"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">
+                      Room {room.roomNumber} - {room.block.name}/F{room.floor.floorNumber}
+                    </p>
+                    <p className="text-sm text-slate-600">
+                      {labelFor(room.sharingType, roomTypeLabels)} | Gender:{" "}
+                      {labelFor(room.genderRestriction, genderRestrictionLabels)} | Price:{" "}
+                      {formatInr(room.basePrice)}
+                    </p>
+                  </div>
+                  <span className="glass-chip">{labelFor(room.status, statusLabels)}</span>
                 </div>
-                <span className="glass-chip">{labelFor(room.status, statusLabels)}</span>
-              </div>
-              <div className="mt-2 text-sm">
-                Beds: Total <b>{room.counts.totalBeds}</b> | Occupied{" "}
-                <b>{room.counts.occupiedBeds}</b> | Vacant <b>{room.counts.vacantBeds}</b>
-              </div>
-              <RoomFeatureBadges attributes={room.attributes} />
-            </button>
-          ))}
-        </div>
+                <div className="mt-2 text-sm">
+                  Beds: Total <b>{room.counts.totalBeds}</b> | Occupied{" "}
+                  <b>{room.counts.occupiedBeds}</b> | Vacant <b>{room.counts.vacantBeds}</b>
+                </div>
+                <RoomFeatureBadges attributes={room.attributes} />
+              </button>
 
-        <div className="space-y-3">
-          <h2 className="text-lg font-medium">Room Details & Occupants</h2>
-          {selectedRoomId && roomDetailQuery.isLoading && !selectedRoom ? (
-            <LiquidLoader label="Loading room details..." compact />
-          ) : null}
-          {!selectedRoom ? (
-            <p className="glass-card p-3 text-sm text-slate-600">
-              Select a room to view occupants and allocate beds.
-            </p>
-          ) : (
-            <div className="glass-panel space-y-3 p-4">
-              <div>
-                <p className="font-medium">
-                  Room {selectedRoom.roomNumber} - {selectedRoom.block.name}/F
-                  {selectedRoom.floor.floorNumber}
-                </p>
-                <p className="text-sm text-slate-600">
-                  Total {selectedRoom.counts.totalBeds} | Occupied{" "}
-                  {selectedRoom.counts.occupiedBeds} | Vacant {selectedRoom.counts.vacantBeds}
-                </p>
-                <RoomFeatureBadges attributes={selectedRoom.attributes} />
-              </div>
+              <AnimatePresence initial={false}>
+                {isSelected ? (
+                  <motion.div
+                    key="room-details"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-3 border-t border-white/40 pt-3">
+                      {roomDetailQuery.isLoading && !selectedRoomDetails ? (
+                        <LiquidLoader label="Loading room details..." compact />
+                      ) : null}
 
-              {selectedRoom.beds.map((bed) => (
-                <div key={bed.id} className="glass-card p-3">
-                  <p className="font-medium">
-                    Bed {bed.bedNumber} - {bed.occupied ? "Occupied" : "Vacant"}
-                  </p>
-                  {bed.occupants.length > 0 ? (
-                    <ul className="mt-2 space-y-1 text-sm">
-                      {bed.occupants.map((o) => (
-                        <li key={o.allocationId} className="space-y-2 border-b border-white/40 pb-2 last:border-b-0 last:pb-0">
-                          <p>
-                            {o.resident.fullName} (
-                            {labelFor(o.resident.gender, {
-                              MALE: "Male",
-                              FEMALE: "Female",
-                              OTHER: "Other"
-                            })}
-                            ) {o.resident.contact ? `- ${o.resident.contact}` : ""}
-                          </p>
-                          <div className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
-                            <Select
-                              value={transferTargetByResident[o.resident.id] ?? ""}
-                              onChange={(e) =>
-                                setTransferTargetByResident((prev) => ({
-                                  ...prev,
-                                  [o.resident.id]: e.target.value
-                                }))
-                              }
-                            >
-                              <option value="">Transfer to...</option>
-                              {transferTargets.map((target) => (
-                                <option key={target.id} value={target.id}>
-                                  {target.label}
-                                </option>
-                              ))}
-                            </Select>
-                            <Button
-                              variant="secondary"
-                              disabled={
-                                transferMutation.isPending ||
-                                !transferTargetByResident[o.resident.id]
-                              }
-                              onClick={() =>
-                                transfer(
-                                  o.resident.id,
-                                  transferTargetByResident[o.resident.id] || ""
-                                )
-                              }
-                            >
-                              {transferMutation.isPending ? "Transferring..." : "Transfer"}
-                            </Button>
-                            <Button
-                              variant="danger"
-                              disabled={vacateMutation.isPending}
-                              onClick={() => vacate(o.resident.id)}
-                            >
-                              {vacateMutation.isPending ? "Vacating..." : "Vacate"}
-                            </Button>
+                      {selectedRoomDetails ? (
+                        <div className="glass-panel space-y-3 p-4">
+                          <div>
+                            <p className="font-medium">
+                              Room {selectedRoomDetails.roomNumber} - {selectedRoomDetails.block.name}
+                              /F{selectedRoomDetails.floor.floorNumber}
+                            </p>
+                            <p className="text-sm text-slate-600">
+                              Total {selectedRoomDetails.counts.totalBeds} | Occupied{" "}
+                              {selectedRoomDetails.counts.occupiedBeds} | Vacant{" "}
+                              {selectedRoomDetails.counts.vacantBeds}
+                            </p>
+                            <RoomFeatureBadges attributes={selectedRoomDetails.attributes} />
                           </div>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <AllocateForm
-                      residents={residents}
-                      loading={allocatingBedId === bed.id}
-                      onSubmit={(payload) => allocate(bed.id, payload)}
-                    />
-                  )}
-                </div>
-              ))}
+
+                          {selectedRoomDetails.beds.map((bed) => (
+                            <div key={bed.id} className="glass-card p-3">
+                              <p className="font-medium">
+                                Bed {bed.bedNumber} - {bed.occupied ? "Occupied" : "Vacant"}
+                              </p>
+                              {bed.occupants.length > 0 ? (
+                                <ul className="mt-2 space-y-1 text-sm">
+                                  {bed.occupants.map((o) => (
+                                    <li
+                                      key={o.allocationId}
+                                      className="space-y-2 border-b border-white/40 pb-2 last:border-b-0 last:pb-0"
+                                    >
+                                      <p>
+                                        {o.resident.fullName} (
+                                        {labelFor(o.resident.gender, {
+                                          MALE: "Male",
+                                          FEMALE: "Female",
+                                          OTHER: "Other"
+                                        })}
+                                        ) {o.resident.contact ? `- ${o.resident.contact}` : ""}
+                                      </p>
+                                      <div className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
+                                        <Select
+                                          value={transferTargetByResident[o.resident.id] ?? ""}
+                                          onChange={(e) =>
+                                            setTransferTargetByResident((prev) => ({
+                                              ...prev,
+                                              [o.resident.id]: e.target.value
+                                            }))
+                                          }
+                                        >
+                                          <option value="">Transfer to...</option>
+                                          {transferTargets.map((target) => (
+                                            <option key={target.id} value={target.id}>
+                                              {target.label}
+                                            </option>
+                                          ))}
+                                        </Select>
+                                        <Button
+                                          variant="secondary"
+                                          disabled={
+                                            transferMutation.isPending ||
+                                            !transferTargetByResident[o.resident.id]
+                                          }
+                                          onClick={() =>
+                                            transfer(
+                                              o.resident.id,
+                                              transferTargetByResident[o.resident.id] || ""
+                                            )
+                                          }
+                                        >
+                                          {transferMutation.isPending
+                                            ? "Transferring..."
+                                            : "Transfer"}
+                                        </Button>
+                                        <Button
+                                          variant="danger"
+                                          disabled={vacateMutation.isPending}
+                                          onClick={() => vacate(o.resident.id)}
+                                        >
+                                          {vacateMutation.isPending ? "Vacating..." : "Vacate"}
+                                        </Button>
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <AllocateForm
+                                  residents={residents}
+                                  loading={allocatingBedId === bed.id}
+                                  onSubmit={(payload) => allocate(bed.id, payload)}
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </div>
-          )}
-        </div>
+          );
+        })}
       </section>
     </main>
   );
