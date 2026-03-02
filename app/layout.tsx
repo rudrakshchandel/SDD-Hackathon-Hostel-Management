@@ -4,7 +4,12 @@ import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "Hostel Management",
-  description: "Next.js 14 app scaffold with Prisma and Tailwind CSS"
+  description: "Next.js 14 app scaffold with Prisma and Tailwind CSS",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico"
+  }
 };
 
 const themeInitScript = `

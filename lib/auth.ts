@@ -1,7 +1,20 @@
 import type { NextAuthOptions } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 
 export const authEnabled = process.env.AUTH_ENABLED === "true";
+
+export function getTempAdminCredentials() {
+  return {
+    username: process.env.ADMIN_USERNAME || "admin",
+    password: process.env.ADMIN_PASSWORD || "admin"
+  };
+}
+
+export function isTempAdminCredentialsValid(username: string, password: string) {
+  const creds = getTempAdminCredentials();
+  return username === creds.username && password === creds.password;
+}
 
 export const googleOAuthConfigured =
   authEnabled &&
@@ -11,12 +24,37 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt"
   },
-  providers: googleOAuthConfigured
+  providers: authEnabled
     ? [
-        GoogleProvider({
-          clientId: process.env.GOOGLE_CLIENT_ID as string,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET as string
-        })
+        CredentialsProvider({
+          id: "credentials",
+          name: "Credentials",
+          credentials: {
+            username: { label: "Username", type: "text" },
+            password: { label: "Password", type: "password" }
+          },
+          async authorize(credentials) {
+            const username = String(credentials?.username || "").trim();
+            const password = String(credentials?.password || "");
+            if (!isTempAdminCredentialsValid(username, password)) {
+              return null;
+            }
+
+            return {
+              id: "temp-admin",
+              name: "Admin",
+              email: "admin@localhost"
+            };
+          }
+        }),
+        ...(googleOAuthConfigured
+          ? [
+              GoogleProvider({
+                clientId: process.env.GOOGLE_CLIENT_ID as string,
+                clientSecret: process.env.GOOGLE_CLIENT_SECRET as string
+              })
+            ]
+          : [])
       ]
     : [],
   pages: {

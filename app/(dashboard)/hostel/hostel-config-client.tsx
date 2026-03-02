@@ -11,6 +11,7 @@ import { FormEvent, ReactNode, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import LiquidLoader from "@/app/components/liquid-loader";
+import { useToast } from "@/lib/toast-context";
 
 type Bed = {
   id: string;
@@ -178,8 +179,8 @@ function CollapsibleSection({
 }
 
 export default function HostelConfigClient() {
-  const [message, setMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const hostelQuery = useQuery({
     queryKey: ["hostel-config"],
     queryFn: () => api<HostelTree | null>("/api/hostel")
@@ -204,9 +205,15 @@ export default function HostelConfigClient() {
     action: { url: string; method: string; body?: unknown },
     okMsg: string
   ) {
-    setMessage(null);
-    await actionMutation.mutateAsync(action);
-    setMessage(okMsg);
+    try {
+      await actionMutation.mutateAsync(action);
+      showToast(okMsg, "success");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Action failed unexpectedly.";
+      showToast(message, "error");
+      throw error;
+    }
   }
 
   async function submitHostel(e: FormEvent<HTMLFormElement>) {
@@ -239,7 +246,7 @@ export default function HostelConfigClient() {
       </main>
     );
   }
-  const queryError = hostelQuery.error ?? actionMutation.error ?? null;
+  const queryError = hostelQuery.error ?? null;
   const error =
     queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null;
 
@@ -257,12 +264,6 @@ export default function HostelConfigClient() {
           {error}
         </div>
       ) : null}
-      {message ? (
-        <div className="section-enter section-delay-2 rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700">
-          {message}
-        </div>
-      ) : null}
-
       <section className="glass-panel section-enter section-delay-2 p-4">
         <h2 className="mb-3 text-lg font-medium">Hostel Profile</h2>
         <form className="grid gap-3 md:grid-cols-2" onSubmit={submitHostel}>

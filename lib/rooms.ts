@@ -58,16 +58,21 @@ function toNumberOrUndefined(input: string | null) {
 }
 
 function roomHasAnyVacantBed(room: RoomWithBedsAndAllocations) {
-  return room.beds.some((bed) => bed.allocations.length === 0);
+  return room.beds.some(
+    (bed) => bed.status === "AVAILABLE" && bed.allocations.length === 0
+  );
 }
 
 function getRoomCounts(room: RoomWithBedsAndAllocations) {
   const totalBeds = room.beds.length;
   const occupiedBeds = room.beds.filter((bed) => bed.allocations.length > 0).length;
+  const vacantBeds = room.beds.filter(
+    (bed) => bed.status === "AVAILABLE" && bed.allocations.length === 0
+  ).length;
   return {
     totalBeds,
     occupiedBeds,
-    vacantBeds: Math.max(0, totalBeds - occupiedBeds)
+    vacantBeds
   };
 }
 
@@ -89,8 +94,8 @@ function roomToListDto(room: RoomWithBedsAndAllocations) {
     },
     counts,
     availableBeds: room.beds
-      .filter((bed) => bed.allocations.length === 0)
-      .map((bed) => ({ id: bed.id, bedNumber: bed.bedNumber }))
+      .filter((bed) => bed.status === "AVAILABLE" && bed.allocations.length === 0)
+      .map((bed) => ({ id: bed.id, bedNumber: bed.bedNumber, status: bed.status }))
   };
 }
 

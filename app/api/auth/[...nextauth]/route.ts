@@ -1,5 +1,5 @@
 import NextAuth from "next-auth";
-import { authEnabled, authOptions, googleOAuthConfigured } from "@/lib/auth";
+import { authEnabled, authOptions } from "@/lib/auth";
 import { checkAuthAttemptLimit } from "@/lib/auth-rate-limit";
 
 const handler = NextAuth(authOptions);
@@ -44,18 +44,6 @@ export async function GET(request: Request, context: { params: { nextauth: strin
     );
   }
 
-  if (!googleOAuthConfigured) {
-    return new Response(
-      JSON.stringify({
-        error:
-          "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
-      }),
-      {
-        status: 500,
-        headers: { "content-type": "application/json" }
-      }
-    );
-  }
   return handler(request, context);
 }
 
@@ -80,17 +68,5 @@ export async function POST(request: Request, context: { params: { nextauth: stri
     );
   }
 
-  if (!googleOAuthConfigured) {
-    return new Response(
-      JSON.stringify({
-        error:
-          "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
-      }),
-      {
-        status: 500,
-        headers: { "content-type": "application/json" }
-      }
-    );
-  }
   return handler(request, context);
 }

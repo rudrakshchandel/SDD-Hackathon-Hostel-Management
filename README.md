@@ -15,9 +15,17 @@ PRISMA_CONNECTION_LIMIT="5"
 PRISMA_POOL_TIMEOUT="10"
 AUTH_ENABLED="false"
 NEXTAUTH_SECRET="replace-with-a-long-random-secret"
+ADMIN_USERNAME="admin"
+ADMIN_PASSWORD="admin"
 AUTH_RATE_LIMIT_WINDOW_MS="900000"
 AUTH_RATE_LIMIT_MAX_ATTEMPTS="10"
 ```
+
+To require login locally, set `AUTH_ENABLED="true"` and keep:
+- `ADMIN_USERNAME="admin"`
+- `ADMIN_PASSWORD="admin"`
+
+Then restart `npm run dev`.
 
 4. Run setup:
 
