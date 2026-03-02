@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
+    "test:api": "vitest run tests/api",
     "test:watch": "vitest",
     "test:browser-smoke": "powershell -ExecutionPolicy Bypass -File scripts/browser-smoke.ps1",
     "db:push": "prisma db push",

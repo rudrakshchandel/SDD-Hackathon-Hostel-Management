@@ -43,6 +43,13 @@ describe("dashboard-ai parsing helpers", () => {
     expect(params.get("availability")).toBe("vacant");
   });
 
+  it("keeps default room filters for generic room query", () => {
+    const params = parseRoomSearchFilters("show rooms");
+    expect(params.get("ac")).toBe("any");
+    expect(params.get("smoking")).toBe("any");
+    expect(params.get("gender")).toBe("ANY");
+  });
+
   it("formats provider error with status and code", () => {
     const message = parseOpenAiError(429, {
       error: {

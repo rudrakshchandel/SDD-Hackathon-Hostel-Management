@@ -15,6 +15,34 @@ export async function GET(request: Request) {
 
   try {
     const url = new URL(request.url);
+    const minPriceParam = url.searchParams.get("minPrice");
+    const maxPriceParam = url.searchParams.get("maxPrice");
+
+    if (minPriceParam && Number.isNaN(Number(minPriceParam))) {
+      return NextResponse.json(
+        { error: "minPrice must be a valid number" },
+        { status: 400 }
+      );
+    }
+
+    if (maxPriceParam && Number.isNaN(Number(maxPriceParam))) {
+      return NextResponse.json(
+        { error: "maxPrice must be a valid number" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      minPriceParam &&
+      maxPriceParam &&
+      Number(minPriceParam) > Number(maxPriceParam)
+    ) {
+      return NextResponse.json(
+        { error: "minPrice cannot be greater than maxPrice" },
+        { status: 400 }
+      );
+    }
+
     const rooms = await searchRooms(url.searchParams);
 
     const [blocks, floors] = await Promise.all([
