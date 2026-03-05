@@ -6,3 +6,7 @@ function toBooleanFlag(value: string | undefined) {
 export function isSlackEnabled() {
   return toBooleanFlag(process.env.SLACK_ENABLED);
 }
+
+export function isWhatsAppEnabled() {
+  return toBooleanFlag(process.env.WHATSAPP_ENABLED);
+}

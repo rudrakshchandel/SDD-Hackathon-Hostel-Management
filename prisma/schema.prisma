@@ -234,6 +234,19 @@ model Notice {
   @@index([hostelId, status])
 }
 
+model WhatsappInboundMessage {
+  id                String   @id @default(cuid())
+  providerMessageId String   @unique
+  fromNumber        String
+  inboundText       String?
+  responseMessageId String?
+  responseSentAt    DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([fromNumber, createdAt])
+}
+
 
 enum AdminUserStatus {
   ACTIVE
