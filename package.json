@@ -11,22 +11,25 @@
     "test:api": "vitest run tests/api",
     "test:watch": "vitest",
     "test:browser-smoke": "powershell -ExecutionPolicy Bypass -File scripts/browser-smoke.ps1",
+    "test:mcp-smoke": "node scripts/mcp-smoke.mjs",
     "db:push": "prisma db push",
     "db:seed": "node prisma/seed.js",
     "db:setup": "npm run db:push && npm run db:seed",
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@prisma/client": "^6.4.1",
     "@tanstack/react-query": "^5.66.0",
     "framer-motion": "^12.4.2",
     "next": "14.2.25",
     "next-auth": "^4.24.11",
-    "react-markdown": "^10.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
     "rehype-sanitize": "^6.0.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^20.17.16",

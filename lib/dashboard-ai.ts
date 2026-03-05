@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { searchRooms } from "@/lib/rooms";
+import {
+  getVacancyByLocationForMcp,
+  searchRoomsForMcp
+} from "@/lib/mcp/tools/rooms";
+import { getRevenueSummaryForMcp } from "@/lib/mcp/tools/revenue";
 
 export type AssistantIntent = "vacancy" | "finance" | "room_search" | "general";
 
@@ -54,6 +59,12 @@ type SqlPipelineResult = {
   };
 };
 
+type ToolPipelineResult = {
+  name: "revenue.summary" | "vacancy.by_location" | "rooms.search";
+  input: Record<string, unknown>;
+  data: unknown;
+};
+
 const ORDINAL_MAP: Record<string, number> = {
   first: 1,
   second: 2,
@@ -94,6 +105,23 @@ const INJECTION_PATTERNS = [
 ];
 
 let cachedSchema: { at: number; data: SchemaMetadata } | null = null;
+
+function isToolPipelineEnabled() {
+  return (process.env.MCP_ENABLED || "").trim().toLowerCase() === "true";
+}
+
+function parseBooleanParam(value: string | null) {
+  if (!value || value === "any") return undefined;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
+}
+
+function getToolPipelineMaxRows() {
+  const maxRows = Number(process.env.MCP_MAX_ROWS || 100);
+  if (!Number.isFinite(maxRows)) return 100;
+  return Math.max(1, Math.min(200, Math.floor(maxRows)));
+}
 
 export function toNumber(value: unknown) {
   if (value === null || value === undefined) return 0;
@@ -431,6 +459,10 @@ function toJsonSafe(value: unknown): unknown {
 }
 
 async function buildSchemaMetadata() {
+  const allowlistedTables = ALLOWED_TABLES.map((table) => table.toLowerCase())
+    .map((table) => `'${table}'`)
+    .join(",");
+
   const columnRows = await prisma.$queryRawUnsafe<
     Array<{
       table_name: string;
@@ -440,10 +472,10 @@ async function buildSchemaMetadata() {
     }>
   >(
     `
-    SELECT table_name, column_name, data_type, is_nullable
+    SELECT lower(table_name) AS table_name, column_name, data_type, is_nullable
     FROM information_schema.columns
     WHERE table_schema = 'public'
-      AND table_name = ANY(ARRAY[${ALLOWED_TABLES.map((table) => `'${table}'`).join(",")}])
+      AND lower(table_name) = ANY(ARRAY[${allowlistedTables}])
     ORDER BY table_name, ordinal_position
     `
   );
@@ -519,6 +551,74 @@ async function buildFallbackContext(question: string, intent: AssistantIntent) {
     hints,
     roomMatches
   };
+}
+
+async function buildToolContext(question: string, intent: AssistantIntent) {
+  if (!isToolPipelineEnabled()) return null;
+
+  const maxRows = getToolPipelineMaxRows();
+  const blockName = parseBlockName(question);
+  const floorNumber = parseFloorNumber(question);
+
+  if (intent === "finance") {
+    const input: Record<string, unknown> = {};
+    const lowered = question.toLowerCase();
+    if (lowered.includes("this month") || lowered.includes("current month")) {
+      const now = new Date();
+      input.periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    }
+
+    const data = await getRevenueSummaryForMcp(input);
+    return {
+      name: "revenue.summary" as const,
+      input,
+      data
+    } satisfies ToolPipelineResult;
+  }
+
+  if (intent === "vacancy") {
+    const input: Record<string, unknown> = {};
+    if (blockName) input.block = blockName;
+    if (floorNumber) input.floor = floorNumber;
+
+    const data = await getVacancyByLocationForMcp(input, maxRows);
+    return {
+      name: "vacancy.by_location" as const,
+      input,
+      data
+    } satisfies ToolPipelineResult;
+  }
+
+  if (intent === "room_search") {
+    const filters = parseRoomSearchFilters(question);
+    const input: Record<string, unknown> = {};
+    const ac = parseBooleanParam(filters.get("ac"));
+    const smoking = parseBooleanParam(filters.get("smoking"));
+    const minPrice = filters.get("minPrice");
+    const maxPrice = filters.get("maxPrice");
+    const gender = filters.get("gender");
+    const availability = filters.get("availability");
+
+    if (ac !== undefined) input.ac = ac;
+    if (smoking !== undefined) input.smoking = smoking;
+    if (minPrice && Number.isFinite(Number(minPrice))) input.minPrice = Number(minPrice);
+    if (maxPrice && Number.isFinite(Number(maxPrice))) input.maxPrice = Number(maxPrice);
+    if (gender && ["ANY", "MALE", "FEMALE"].includes(gender)) input.gender = gender;
+    if (availability && ["vacant", "full", "all"].includes(availability)) {
+      input.availability = availability;
+    }
+    if (blockName) input.block = blockName;
+    if (floorNumber) input.floor = floorNumber;
+
+    const data = await searchRoomsForMcp(input, maxRows);
+    return {
+      name: "rooms.search" as const,
+      input,
+      data
+    } satisfies ToolPipelineResult;
+  }
+
+  return null;
 }
 
 async function generateSqlFromQuestion({
@@ -636,6 +736,20 @@ async function askModel(question: string, intent: AssistantIntent, context: unkn
 }
 
 async function buildAnswerContext(question: string, intent: AssistantIntent) {
+  let toolError: string | null = null;
+
+  try {
+    const tool = await buildToolContext(question, intent);
+    if (tool) {
+      return {
+        source: "tool_pipeline" as const,
+        tool
+      };
+    }
+  } catch (error) {
+    toolError = error instanceof Error ? error.message : "Tool pipeline failed";
+  }
+
   try {
     const pipeline = await buildSqlContext(question, intent);
     return {
@@ -647,7 +761,12 @@ async function buildAnswerContext(question: string, intent: AssistantIntent) {
     return {
       source: "fallback" as const,
       fallback,
-      error: error instanceof Error ? error.message : "SQL pipeline failed"
+      error: [
+        toolError,
+        error instanceof Error ? error.message : "SQL pipeline failed"
+      ]
+        .filter(Boolean)
+        .join(" | ")
     };
   }
 }
@@ -664,7 +783,7 @@ export async function answerDashboardQuestion(question: string) {
   const answer = await askModel(sanitized.value, intent, {
     ...answerContext,
     instructions:
-      "If source=sql_pipeline, rely on SQL rows for the answer. If source=fallback, answer conservatively and mention uncertainty."
+      "If source=tool_pipeline, rely on tool.data as the primary truth. If source=sql_pipeline, rely on SQL rows for the answer. If source=fallback, answer conservatively and mention uncertainty."
   });
 
   return {
@@ -700,7 +819,7 @@ export async function buildDashboardAiRequest(question: string, stream = false) 
       context: {
         ...answerContext,
         instructions:
-          "If source=sql_pipeline, rely on SQL rows for the answer. If source=fallback, answer conservatively and mention uncertainty."
+          "If source=tool_pipeline, rely on tool.data as the primary truth. If source=sql_pipeline, rely on SQL rows for the answer. If source=fallback, answer conservatively and mention uncertainty."
       }
     })
   };

@@ -94,6 +94,47 @@ GEMINI_MODEL="gemini-2.5-flash"
 @HostelBot what's vacancy in first floor?
 ```
 
+## WhatsApp + AI Integration (Inbound Webhook)
+
+Phase 1 supports inbound Q&A only (no campaign/broadcast flow).
+
+Full setup guide:
+- [docs/whatsapp-setup.md](docs/whatsapp-setup.md)
+
+### Environment variables
+
+```env
+WHATSAPP_ENABLED="false"
+WHATSAPP_VERIFY_TOKEN="your-webhook-verify-token"
+WHATSAPP_APP_SECRET="your-meta-app-secret"
+WHATSAPP_ACCESS_TOKEN="your-system-user-access-token"
+WHATSAPP_PHONE_NUMBER_ID="your-whatsapp-phone-number-id"
+WHATSAPP_ALLOWED_NUMBERS="+919876543210,+919812345678"
+```
+
+- Keep `WHATSAPP_ENABLED="false"` until webhook setup is complete.
+- `WHATSAPP_ALLOWED_NUMBERS` must be comma-separated E.164 numbers.
+
+### Meta webhook setup
+
+1. Configure callback URL:
+   - `https://<your-domain>/api/whatsapp/webhook`
+2. Set verify token to match `WHATSAPP_VERIFY_TOKEN`.
+3. Subscribe to message events for your WhatsApp Business Account.
+4. Enable `WHATSAPP_ENABLED="true"` and restart app.
+
+### Local verification curl
+
+```bash
+curl "http://localhost:3000/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=<verify-token>&hub.challenge=test123"
+```
+
+Expected response body:
+
+```text
+test123
+```
+
 ## In-App AI Assistant (Dashboard)
 
 The dashboard now includes an AI assistant panel at `/dashboard` for:
@@ -110,6 +151,9 @@ It uses deterministic data logic by default and optionally rewrites responses wi
 GEMINI_API_KEY="optional-gemini-api-key"
 GEMINI_MODEL="gemini-2.5-flash"
 AI_QUERY_MAX_LENGTH="500"
+MCP_ENABLED="false"
+MCP_INTERNAL_TOKEN=""
+MCP_MAX_ROWS="100"
 ```
 
 Security hardening included:
@@ -117,6 +161,50 @@ Security hardening included:
 - prompt-injection pattern rejection at API boundary
 - no full DB dump context (schema + read-only SQL pipeline)
 - auth attempt limiting on NextAuth signin/callback routes
+
+## MCP Server (Read-only)
+
+The app exposes a read-only MCP endpoint at `/api/mcp` using Streamable HTTP transport.
+
+### Environment variables
+
+```env
+MCP_ENABLED="false"
+MCP_INTERNAL_TOKEN=""
+MCP_MAX_ROWS="100"
+```
+
+- Keep `MCP_ENABLED="false"` until you are ready to integrate.
+- Send `x-mcp-token: <MCP_INTERNAL_TOKEN>` on every MCP request.
+- `MCP_MAX_ROWS` limits row-heavy responses.
+
+### Phase-1 tools
+
+- `hostel.get_summary`
+- `rooms.search`
+- `vacancy.by_location`
+- `revenue.summary`
+- `tenants.list`
+- `schema.describe`
+
+All tools are read-only and sensitive personal fields are masked by default.
+
+### Example request
+
+```bash
+curl -X POST "http://localhost:3000/api/mcp" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "x-mcp-token: <your-mcp-token>" \
+  -H "mcp-protocol-version: 2025-03-26" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+### Local smoke check
+
+```bash
+MCP_INTERNAL_TOKEN="<your-mcp-token>" npm run test:mcp-smoke
+```
 
 ## New API Modules (Current)
 

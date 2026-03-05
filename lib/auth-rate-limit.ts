@@ -4,6 +4,7 @@ type RateLimitEntry = {
 };
 
 export const authRateLimitStore = new Map<string, RateLimitEntry>();
+export const genericRateLimitStore = new Map<string, RateLimitEntry>();
 
 const DEFAULT_WINDOW_MS = Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000);
 const DEFAULT_MAX_ATTEMPTS = Number(process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS || 10);
@@ -26,13 +27,27 @@ export function checkAuthAttemptLimit(
 ) {
   const windowMs = Math.max(1_000, options?.windowMs ?? DEFAULT_WINDOW_MS);
   const maxAttempts = Math.max(1, options?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
-  const now = Date.now();
   const ip = getClientIpAddress(request);
   const key = `${action}:${ip}`;
 
-  const existing = authRateLimitStore.get(key);
+  return checkRateLimitByKey(key, { windowMs, maxAttempts }, authRateLimitStore);
+}
+
+export function checkRateLimitByKey(
+  key: string,
+  options?: {
+    windowMs?: number;
+    maxAttempts?: number;
+  },
+  store: Map<string, RateLimitEntry> = genericRateLimitStore
+) {
+  const windowMs = Math.max(1_000, options?.windowMs ?? DEFAULT_WINDOW_MS);
+  const maxAttempts = Math.max(1, options?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
+  const now = Date.now();
+
+  const existing = store.get(key);
   if (!existing || existing.resetAt <= now) {
-    authRateLimitStore.set(key, {
+    store.set(key, {
       count: 1,
       resetAt: now + windowMs
     });
@@ -52,7 +67,7 @@ export function checkAuthAttemptLimit(
     };
   }
 
-  authRateLimitStore.set(key, {
+  store.set(key, {
     ...existing,
     count: nextCount
   });
