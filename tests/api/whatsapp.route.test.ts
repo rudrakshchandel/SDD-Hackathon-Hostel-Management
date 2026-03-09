@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   isWhatsAppEnabled: vi.fn(),
@@ -12,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   answerDashboardQuestion: vi.fn(),
   sendWhatsAppTextMessage: vi.fn(),
   prisma: {
+    whatsappWebhookHit: {
+      create: vi.fn(),
+      update: vi.fn()
+    },
     whatsappInboundMessage: {
       create: vi.fn(),
       update: vi.fn()
@@ -72,8 +76,11 @@ function webhookPayload(messageId = "wamid-1", text = "Finance summary for hoste
 }
 
 describe("/api/whatsapp/webhook", () => {
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     mocks.isWhatsAppEnabled.mockReturnValue(true);
     mocks.verifyWhatsAppRequest.mockReturnValue({ ok: true });
     mocks.parseWhatsAppAllowlist.mockReturnValue(["+919876543210"]);
@@ -84,8 +91,14 @@ describe("/api/whatsapp/webhook", () => {
     mocks.sanitizeAssistantQuery.mockReturnValue({ ok: true, value: "Finance summary for hostel" });
     mocks.answerDashboardQuestion.mockResolvedValue({ answer: "Invoiced ₹10000" });
     mocks.sendWhatsAppTextMessage.mockResolvedValue({ messageId: "wamid-out" });
+    mocks.prisma.whatsappWebhookHit.create.mockResolvedValue({ id: "hit-1" });
+    mocks.prisma.whatsappWebhookHit.update.mockResolvedValue({ id: "hit-1" });
     mocks.prisma.whatsappInboundMessage.create.mockResolvedValue({ id: "1" });
     mocks.prisma.whatsappInboundMessage.update.mockResolvedValue({ id: "1" });
+  });
+
+  afterEach(() => {
+    consoleWarnSpy.mockRestore();
   });
 
   it("returns disabled response when feature flag is off", async () => {
@@ -103,6 +116,7 @@ describe("/api/whatsapp/webhook", () => {
 
     expect(response.status).toBe(200);
     expect(payload.disabled).toBe(true);
+    expect(mocks.prisma.whatsappWebhookHit.create).toHaveBeenCalledTimes(1);
   });
 
   it("handles GET verification challenge", async () => {
@@ -117,11 +131,10 @@ describe("/api/whatsapp/webhook", () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("abc");
+    expect(mocks.prisma.whatsappWebhookHit.create).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects invalid signatures", async () => {
-    mocks.verifyWhatsAppRequest.mockReturnValue({ ok: false, error: "bad-signature" });
-
+  it("accepts webhook payload even when signature header is missing", async () => {
     const { POST } = await import("@/app/api/whatsapp/webhook/route");
     const response = await POST(
       new Request("http://localhost/api/whatsapp/webhook", {
@@ -130,10 +143,14 @@ describe("/api/whatsapp/webhook", () => {
         body: JSON.stringify(webhookPayload())
       })
     );
-    const payload = await response.json();
 
-    expect(response.status).toBe(401);
-    expect(payload.error).toContain("bad-signature");
+    expect(response.status).toBe(200);
+    expect(mocks.prisma.whatsappWebhookHit.create).toHaveBeenCalledTimes(1);
+    expect(mocks.answerDashboardQuestion).toHaveBeenCalledTimes(1);
+    expect(consoleWarnSpy).not.toHaveBeenCalledWith(
+      "[wa-webhook] signature verification failed",
+      expect.anything()
+    );
   });
 
   it("blocks non-allowlisted numbers with generic reply", async () => {
@@ -182,7 +199,13 @@ describe("/api/whatsapp/webhook", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.answerDashboardQuestion).toHaveBeenCalledTimes(1);
-    expect(mocks.sendWhatsAppTextMessage).toHaveBeenCalledWith(
+    expect(mocks.sendWhatsAppTextMessage).toHaveBeenNthCalledWith(
+      1,
+      "+919876543210",
+      "Got your message. I am checking this now."
+    );
+    expect(mocks.sendWhatsAppTextMessage).toHaveBeenNthCalledWith(
+      2,
       "+919876543210",
       "Invoiced ₹10000"
     );
@@ -207,5 +230,32 @@ describe("/api/whatsapp/webhook", () => {
     expect(response.status).toBe(200);
     expect(mocks.sendWhatsAppTextMessage).toHaveBeenCalled();
     expect(mocks.answerDashboardQuestion).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges webhook when payload has no inbound text messages", async () => {
+    const { POST } = await import("@/app/api/whatsapp/webhook/route");
+    const response = await POST(
+      new Request("http://localhost/api/whatsapp/webhook", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({})
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.processed).toBe(0);
+    expect(payload.ack).toContain("payload is empty");
+    expect(mocks.sendWhatsAppTextMessage).not.toHaveBeenCalled();
+    expect(mocks.prisma.whatsappWebhookHit.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          outcome: "empty_payload",
+          messageCount: 0,
+          processedCount: 0
+        })
+      })
+    );
   });
 });
