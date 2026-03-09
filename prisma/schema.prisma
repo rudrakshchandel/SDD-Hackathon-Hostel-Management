@@ -247,6 +247,24 @@ model WhatsappInboundMessage {
   @@index([fromNumber, createdAt])
 }
 
+model WhatsappWebhookHit {
+  id            String   @id @default(cuid())
+  method        String
+  url           String
+  hasSignature  Boolean  @default(false)
+  payloadText   String?  @db.Text
+  messageCount  Int?
+  processedCount Int?
+  statusCode    Int?
+  outcome       String?
+  error         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([method, createdAt])
+}
+
 
 enum AdminUserStatus {
   ACTIVE
