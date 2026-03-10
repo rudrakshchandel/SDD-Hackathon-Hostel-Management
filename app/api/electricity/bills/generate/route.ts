@@ -17,9 +17,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid billing period dates" }, { status: 400 });
   }
 
-  if (body.roomId) {
+  if (body.roomId !== undefined) {
+    const roomId = String(body.roomId || "").trim();
+    if (!roomId) {
+      return NextResponse.json({ error: "roomId is required for room billing" }, { status: 400 });
+    }
     const result = await generateRoomBill({
-      roomId: String(body.roomId),
+      roomId,
       periodStart,
       periodEnd,
       splitMode: body.splitMode

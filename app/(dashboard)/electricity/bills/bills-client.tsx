@@ -68,6 +68,7 @@ export default function ElectricityBillsClient() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
+  const [scope, setScope] = useState<"room" | "hostel">("room");
 
   const settingsQuery = useQuery({
     queryKey: ["electricity-settings"],
@@ -115,7 +116,6 @@ export default function ElectricityBillsClient() {
   async function submitGenerate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const scope = String(formData.get("scope"));
     const payload = {
       roomId: scope === "room" ? String(formData.get("roomId")) : undefined,
       periodStart: String(formData.get("periodStart")),
@@ -165,11 +165,15 @@ export default function ElectricityBillsClient() {
       <section className="glass-panel section-enter section-delay-2 p-4">
         <h2 className="text-lg font-medium">Generate Bills</h2>
         <form className="mt-3 grid gap-3 md:grid-cols-5" onSubmit={submitGenerate}>
-          <Select name="scope" defaultValue="room">
+          <Select
+            name="scope"
+            value={scope}
+            onChange={(event) => setScope(event.target.value as "room" | "hostel")}
+          >
             <option value="room">Single Room</option>
             <option value="hostel">All Rooms</option>
           </Select>
-          <Select name="roomId">
+          <Select name="roomId" disabled={scope === "hostel"} required={scope === "room"}>
             <option value="">Select room</option>
             {roomOptions.map((room) => (
               <option key={room.value} value={room.value}>
