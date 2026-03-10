@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { calculateOverlapDays } from "@/lib/electricity/date-utils";
 import { calculateShares } from "@/lib/electricity/split";
 import { calculatePeriodUnits, evaluateReading } from "@/lib/electricity/readings";
+import { buildHostelRoomFilter } from "@/lib/electricity/room-filter";
 import { randomUUID } from "crypto";
 
 type ElectricitySettings = {
@@ -405,7 +406,7 @@ export async function generateHostelBills(input: {
   }
 
   const rooms = await prisma.room.findMany({
-    where: { status: "ACTIVE" },
+    where: buildHostelRoomFilter(hostel.id),
     select: { id: true }
   });
 
