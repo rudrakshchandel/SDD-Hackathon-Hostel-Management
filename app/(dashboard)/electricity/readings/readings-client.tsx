@@ -126,10 +126,10 @@ export default function ElectricityReadingsClient() {
   const rooms = roomsQuery.data ?? [];
   const readings = readingsQuery.data ?? [];
   const selectedMeter = meters.find((meter) => meter.id === selectedMeterId) ?? null;
-  const meterByRoom = useMemo(
-    () => new Map(meters.map((meter) => [meter.room.id, meter])),
-    [meters]
-  );
+  const meterByRoom = useMemo(() => {
+    const source = metersQuery.data ?? [];
+    return new Map(source.map((meter) => [meter.room.id, meter]));
+  }, [metersQuery.data]);
 
   return (
     <main className="page-enter mx-auto max-w-6xl space-y-6 p-6">

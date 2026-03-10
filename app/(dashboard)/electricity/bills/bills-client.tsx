@@ -131,7 +131,6 @@ export default function ElectricityBillsClient() {
     }
   }
 
-  const rooms = roomsQuery.data ?? [];
   const bills = billsQuery.data ?? [];
   const details = detailsQuery.data ?? null;
   const settings = settingsQuery.data ?? null;
@@ -139,11 +138,11 @@ export default function ElectricityBillsClient() {
 
   const roomOptions = useMemo(
     () =>
-      rooms.map((room) => ({
+      (roomsQuery.data ?? []).map((room) => ({
         value: room.id,
         label: `${room.block.name} / Floor ${room.floor.floorNumber} / Room ${room.roomNumber}`
       })),
-    [rooms]
+    [roomsQuery.data]
   );
 
   return (

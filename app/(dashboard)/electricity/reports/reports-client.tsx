@@ -3,25 +3,69 @@
 import { api } from "@/lib/api-client";
 import { useQuery } from "@tanstack/react-query";
 
+type RoomReportRow = {
+  id: string;
+  roomNumber: string;
+  floorNumber: number;
+  blockName: string;
+  periodStart: string;
+  periodEnd: string;
+  unitsConsumed: number;
+  totalAmount: number;
+  status: string;
+};
+
+type TenantReportRow = {
+  id: string;
+  resident: { fullName: string } | null;
+  room: {
+    roomNumber: string;
+    floor: { floorNumber: number; block: { name: string } };
+  } | null;
+  periodStart: string;
+  periodEnd: string;
+  stayDays: number | null;
+  unitsConsumedShare: number | null;
+  amount: number;
+};
+
+type MeterReportRow = {
+  id: string;
+  meterNumber: string;
+  roomNumber: string;
+  floorNumber: number;
+  blockName: string;
+  readingDate: string;
+  unitsConsumed: number;
+  status: string;
+};
+
+type MonthlyReportRow = {
+  period: string;
+  count: number;
+  units: number;
+  amount: number;
+};
+
 export default function ElectricityReportsClient() {
   const roomReportQuery = useQuery({
     queryKey: ["electricity-report-room"],
-    queryFn: () => api<any[]>("/api/reports/electricity/room")
+    queryFn: () => api<RoomReportRow[]>("/api/reports/electricity/room")
   });
 
   const tenantReportQuery = useQuery({
     queryKey: ["electricity-report-tenant"],
-    queryFn: () => api<any[]>("/api/reports/electricity/tenant")
+    queryFn: () => api<TenantReportRow[]>("/api/reports/electricity/tenant")
   });
 
   const meterReportQuery = useQuery({
     queryKey: ["electricity-report-meter"],
-    queryFn: () => api<any[]>("/api/reports/electricity/meter")
+    queryFn: () => api<MeterReportRow[]>("/api/reports/electricity/meter")
   });
 
   const monthlyReportQuery = useQuery({
     queryKey: ["electricity-report-monthly"],
-    queryFn: () => api<any[]>("/api/reports/electricity/monthly")
+    queryFn: () => api<MonthlyReportRow[]>("/api/reports/electricity/monthly")
   });
 
   const roomReport = roomReportQuery.data ?? [];
