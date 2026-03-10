@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { evaluateReading } from "@/lib/electricity/readings";
+import { recomputeReadingChain } from "@/lib/electricity/readings";
 
 function toNumber(value: Prisma.Decimal | number | string | null | undefined) {
   if (value === null || value === undefined) return 0;
@@ -39,32 +39,65 @@ export async function PATCH(
   }
 
   const effectiveDate = readingDate ?? existing.readingDate;
+  const recomputeStart =
+    effectiveDate.getTime() < existing.readingDate.getTime()
+      ? effectiveDate
+      : existing.readingDate;
+
   const previous = await prisma.meterReading.findFirst({
     where: {
       meterId: existing.meterId,
       status: { in: ["VALID", "CORRECTED"] },
-      readingDate: { lt: effectiveDate }
+      readingDate: { lt: recomputeStart }
     },
     orderBy: { readingDate: "desc" }
   });
 
   const previousValue = previous ? toNumber(previous.currentReading) : currentReading;
-  const evaluation = evaluateReading(currentReading, previousValue);
 
-  const status = evaluation.status === "VALID" ? "CORRECTED" : evaluation.status;
-  const unitsConsumed = evaluation.units ?? 0;
-
-  const reading = await prisma.meterReading.update({
-    where: { id: existing.id },
-    data: {
-      readingDate: effectiveDate,
-      previousReading: toMoney(previousValue),
-      currentReading: toMoney(currentReading),
-      unitsConsumed: toMoney(unitsConsumed),
-      status,
-      notes: body.notes ? String(body.notes) : existing.notes
-    }
+  const subsequentReadings = await prisma.meterReading.findMany({
+    where: {
+      meterId: existing.meterId,
+      readingDate: { gte: recomputeStart }
+    },
+    orderBy: { readingDate: "asc" }
   });
 
-  return NextResponse.json({ data: reading });
+  const readings = subsequentReadings.map((reading) => ({
+    id: reading.id,
+    readingDate: reading.id === existing.id ? effectiveDate : reading.readingDate,
+    currentReading:
+      reading.id === existing.id ? currentReading : toNumber(reading.currentReading)
+  }));
+
+  const chain = recomputeReadingChain({
+    previousReading: previousValue,
+    readings,
+    correctedId: existing.id
+  });
+
+  const readingMap = new Map(
+    readings.map((reading) => [reading.id, reading] as const)
+  );
+
+  const updates = chain.map((item) => {
+    const source = readingMap.get(item.id)!;
+
+    return prisma.meterReading.update({
+      where: { id: item.id },
+      data: {
+        readingDate: item.id === existing.id ? effectiveDate : undefined,
+        previousReading: toMoney(item.previousReading),
+        currentReading: toMoney(source.currentReading),
+        unitsConsumed: toMoney(item.unitsConsumed),
+        status: item.status,
+        notes: item.id === existing.id ? (body.notes ? String(body.notes) : existing.notes) : undefined
+      }
+    });
+  });
+
+  const updated = await prisma.$transaction(updates);
+
+  const corrected = updated.find((reading) => reading.id === existing.id);
+  return NextResponse.json({ data: corrected ?? updated[0] });
 }

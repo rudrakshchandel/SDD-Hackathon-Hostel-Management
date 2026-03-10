@@ -41,3 +41,38 @@ export function calculatePeriodUnits(
   const delta = endReading.currentReading - baseline.currentReading;
   return delta > 0 ? Number(delta.toFixed(2)) : 0;
 }
+
+export function recomputeReadingChain(input: {
+  previousReading: number;
+  readings: { id: string; readingDate: Date; currentReading: number }[];
+  correctedId: string;
+}) {
+  const sorted = [...input.readings].sort(
+    (a, b) => a.readingDate.getTime() - b.readingDate.getTime()
+  );
+
+  let previous = input.previousReading;
+
+  return sorted.map((reading) => {
+    if (reading.currentReading < previous) {
+      return {
+        id: reading.id,
+        previousReading: previous,
+        unitsConsumed: 0,
+        status: "RESET_REVIEW" as const
+      };
+    }
+
+    const unitsConsumed = Number((reading.currentReading - previous).toFixed(2));
+    const status = reading.id === input.correctedId ? "CORRECTED" : "VALID";
+    const result = {
+      id: reading.id,
+      previousReading: previous,
+      unitsConsumed,
+      status
+    } as const;
+
+    previous = reading.currentReading;
+    return result;
+  });
+}
