@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { ElectricitySplitMode, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { calculateOverlapDays } from "@/lib/electricity/date-utils";
 import { calculateShares } from "@/lib/electricity/split";
@@ -25,7 +25,15 @@ type GenerateBillInput = {
   roomId: string;
   periodStart: Date;
   periodEnd: Date;
-  splitMode?: "EQUAL" | "STAY_DURATION";
+  splitMode?: ElectricitySplitMode;
+};
+
+type ComputedShare = {
+  residentId: string;
+  allocationId: string | null;
+  stayDays: number;
+  amount: number;
+  splitMode: ElectricitySplitMode;
 };
 
 function toNumber(value: Prisma.Decimal | number | string | null | undefined) {
@@ -176,7 +184,7 @@ async function getRoomAllocations(roomId: string, periodStart: Date, periodEnd: 
   });
 }
 
-function pickSplitMode(stayDays: number[], fallback: "EQUAL" | "STAY_DURATION") {
+function pickSplitMode(stayDays: number[], fallback: ElectricitySplitMode) {
   if (stayDays.length <= 1) return "EQUAL";
   const first = stayDays[0];
   const allEqual = stayDays.every((days) => days === first);
@@ -189,8 +197,8 @@ async function computeShares(input: {
   periodStart: Date;
   periodEnd: Date;
   totalAmount: number;
-  splitModeFallback: "EQUAL" | "STAY_DURATION";
-}) {
+  splitModeFallback: ElectricitySplitMode;
+}): Promise<ComputedShare[]> {
   const allocations = await getRoomAllocations(
     input.roomId,
     input.periodStart,
@@ -198,12 +206,7 @@ async function computeShares(input: {
   );
 
   if (allocations.length === 0) {
-    return [] as Array<{
-      residentId: string;
-      allocationId: string | null;
-      stayDays: number;
-      amount: number;
-    }>;
+    return [];
   }
 
   const stayByResident = new Map<string, { stayDays: number; allocationId: string | null }>();
