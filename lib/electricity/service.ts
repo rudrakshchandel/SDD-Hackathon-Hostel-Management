@@ -2,7 +2,7 @@ import { ElectricitySplitMode, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { calculateOverlapDays } from "@/lib/electricity/date-utils";
 import { calculateShares } from "@/lib/electricity/split";
-import { evaluateReading } from "@/lib/electricity/readings";
+import { calculatePeriodUnits, evaluateReading } from "@/lib/electricity/readings";
 import { randomUUID } from "crypto";
 
 type ElectricitySettings = {
@@ -283,19 +283,24 @@ export async function generateRoomBill(input: GenerateBillInput) {
     throw new Error("No electricity meter assigned to this room");
   }
 
-  const latestReading = await prisma.meterReading.findFirst({
+  const readings = await prisma.meterReading.findMany({
     where: {
       meterId: meter.id,
       status: { in: ["VALID", "CORRECTED"] },
       readingDate: { lte: input.periodEnd }
     },
-    orderBy: { readingDate: "desc" }
+    orderBy: { readingDate: "asc" }
   });
 
-  let unitsConsumed = 0;
-  if (latestReading && latestReading.readingDate >= input.periodStart) {
-    unitsConsumed = toNumber(latestReading.unitsConsumed);
-  }
+  const unitsConsumed = calculatePeriodUnits(
+    readings.map((reading) => ({
+      readingDate: reading.readingDate,
+      currentReading: toNumber(reading.currentReading),
+      status: reading.status
+    })),
+    input.periodStart,
+    input.periodEnd
+  );
 
   const totalAmount = new Prisma.Decimal(unitsConsumed).mul(hostel.electricityRatePerUnit);
   const totalAmountNumber = totalAmount.toDecimalPlaces(2).toNumber();
@@ -304,7 +309,7 @@ export async function generateRoomBill(input: GenerateBillInput) {
     ? await prisma.electricityBill.update({
         where: { id: existingBill.id },
         data: {
-          unitsConsumed: totalAmount.isZero() ? new Prisma.Decimal(0) : unitsConsumed,
+          unitsConsumed,
           unitRate: hostel.electricityRatePerUnit,
           totalAmount: totalAmount.toDecimalPlaces(2)
         }
