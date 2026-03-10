@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 const { PrismaClient } = require("@prisma/client");
+const { randomUUID } = require("crypto");
 
 const prisma = new PrismaClient();
 const SHOULD_RESET = process.env.SEED_RESET !== "false";
@@ -17,6 +18,10 @@ const hostelSeed = {
   contactNumber: "+91-8045012233",
   timezone: "Asia/Kolkata",
   status: "ACTIVE",
+  electricityType: "METER_BASED",
+  electricityRatePerUnit: "9.25",
+  billingCycle: "MONTHLY",
+  electricitySplitMode: "STAY_DURATION",
   blocks: [
     {
       name: "A",
@@ -541,6 +546,95 @@ const noticesSeed = [
   }
 ];
 
+const electricityMetersSeed = [
+  { roomCode: "A-1-101", meterNumber: "A-101-MTR-1", installationDate: "2026-01-01" },
+  { roomCode: "A-1-102", meterNumber: "A-102-MTR-1", installationDate: "2026-01-01" },
+  { roomCode: "B-1-101", meterNumber: "B-101-MTR-1", installationDate: "2026-01-01" }
+];
+
+const meterReadingsSeed = [
+  {
+    roomCode: "A-1-101",
+    readings: [
+      {
+        readingDate: "2026-02-01",
+        previousReading: null,
+        currentReading: "1200",
+        unitsConsumed: null,
+        status: "VALID",
+        notes: "Baseline reading"
+      },
+      {
+        readingDate: "2026-03-01",
+        previousReading: "1200",
+        currentReading: "1280",
+        unitsConsumed: "80",
+        status: "VALID",
+        notes: "February consumption"
+      }
+    ]
+  },
+  {
+    roomCode: "A-1-102",
+    readings: [
+      {
+        readingDate: "2026-02-01",
+        previousReading: null,
+        currentReading: "980",
+        unitsConsumed: null,
+        status: "VALID",
+        notes: "Baseline reading"
+      },
+      {
+        readingDate: "2026-03-01",
+        previousReading: "980",
+        currentReading: "1040",
+        unitsConsumed: "60",
+        status: "VALID",
+        notes: "February consumption"
+      }
+    ]
+  },
+  {
+    roomCode: "B-1-101",
+    readings: [
+      {
+        readingDate: "2026-02-01",
+        previousReading: null,
+        currentReading: "1500",
+        unitsConsumed: null,
+        status: "VALID",
+        notes: "Baseline reading"
+      },
+      {
+        readingDate: "2026-03-01",
+        previousReading: "1500",
+        currentReading: "1490",
+        unitsConsumed: null,
+        status: "RESET_REVIEW",
+        notes: "Possible meter reset"
+      }
+    ]
+  }
+];
+
+const electricityBillsSeed = [
+  {
+    roomCode: "A-1-101",
+    billingPeriodStart: "2026-02-01",
+    billingPeriodEnd: "2026-02-28",
+    unitsConsumed: "80",
+    unitRate: "9.25",
+    totalAmount: "740",
+    status: "FINALIZED",
+    splitMode: "EQUAL",
+    shares: [
+      { residentEmail: "arjun.mehta@seed.local", stayDays: 28, amount: "370" },
+      { residentEmail: "vikram.singh@seed.local", stayDays: 28, amount: "370" }
+    ]
+  }
+];
+
 function toDate(dateString) {
   return new Date(`${dateString}T00:00:00.000Z`);
 }
@@ -548,6 +642,9 @@ function toDate(dateString) {
 async function resetDatabase() {
   await prisma.payment.deleteMany();
   await prisma.invoice.deleteMany();
+  await prisma.electricityBill.deleteMany();
+  await prisma.meterReading.deleteMany();
+  await prisma.electricityMeter.deleteMany();
   await prisma.complaint.deleteMany();
   await prisma.notice.deleteMany();
   await prisma.allocation.deleteMany();
@@ -632,6 +729,7 @@ async function ensureDemoDataset() {
 
   const roomsByCode = new Map();
   const bedsByCode = new Map();
+  const metersByRoomCode = new Map();
 
   for (const blockSeed of hostelSeed.blocks) {
     const block = await prisma.block.create({
@@ -683,6 +781,53 @@ async function ensureDemoDataset() {
           bedsByCode.set(bedCode, bed);
         }
       }
+    }
+  }
+
+  for (const meterSeed of electricityMetersSeed) {
+    const room = roomsByCode.get(meterSeed.roomCode);
+    if (!room) {
+      throw new Error(`Room not found for meter seed: ${meterSeed.roomCode}`);
+    }
+
+    const meter = await prisma.electricityMeter.create({
+      data: {
+        id: randomUUID(),
+        roomId: room.id,
+        meterNumber: meterSeed.meterNumber,
+        installationDate: toDate(meterSeed.installationDate),
+        isActive: true
+      }
+    });
+
+    metersByRoomCode.set(meterSeed.roomCode, meter);
+  }
+
+  for (const readingSeed of meterReadingsSeed) {
+    const meter = metersByRoomCode.get(readingSeed.roomCode);
+    if (!meter) {
+      throw new Error(`Meter not found for reading seed: ${readingSeed.roomCode}`);
+    }
+
+    for (const reading of readingSeed.readings) {
+      const previousReading =
+        reading.previousReading ?? reading.currentReading;
+      const currentReading = reading.currentReading;
+      const unitsConsumed = reading.unitsConsumed ?? "0";
+
+      await prisma.meterReading.create({
+        data: {
+          id: randomUUID(),
+          meterId: meter.id,
+          readingDate: toDate(reading.readingDate),
+          previousReading,
+          currentReading,
+          unitsConsumed,
+          status: reading.status,
+          createdBy: warden.id,
+          notes: reading.notes
+        }
+      });
     }
   }
 
@@ -837,6 +982,60 @@ async function ensureDemoDataset() {
         notes: "Seeded INR rent collection"
       }
     });
+  }
+
+  for (const billSeed of electricityBillsSeed) {
+    const room = roomsByCode.get(billSeed.roomCode);
+    if (!room) {
+      throw new Error(`Room not found for electricity bill: ${billSeed.roomCode}`);
+    }
+
+    const billId = randomUUID();
+    const bill = await prisma.electricityBill.create({
+      data: {
+        id: billId,
+        roomId: room.id,
+        billingPeriodStart: toDate(billSeed.billingPeriodStart),
+        billingPeriodEnd: toDate(billSeed.billingPeriodEnd),
+        unitsConsumed: billSeed.unitsConsumed,
+        unitRate: billSeed.unitRate,
+        totalAmount: billSeed.totalAmount,
+        status: billSeed.status
+      }
+    });
+
+    for (const shareSeed of billSeed.shares) {
+      const resident = residentsByEmail.get(shareSeed.residentEmail);
+      if (!resident) {
+        throw new Error(`Resident not found for electricity share: ${shareSeed.residentEmail}`);
+      }
+
+      const allocationId =
+        activeAllocationByResidentEmail.get(shareSeed.residentEmail)?.id || null;
+      const totalAmount = Number(billSeed.totalAmount);
+      const shareAmount = Number(shareSeed.amount);
+      const unitsConsumed = Number(billSeed.unitsConsumed);
+      const unitsShare =
+        totalAmount > 0 ? Number(((unitsConsumed * shareAmount) / totalAmount).toFixed(2)) : 0;
+
+      await prisma.invoice.create({
+        data: {
+          residentId: resident.id,
+          allocationId,
+          periodStart: toDate(billSeed.billingPeriodStart),
+          periodEnd: toDate(billSeed.billingPeriodEnd),
+          totalAmount: shareSeed.amount,
+          dueDate: toDate(billSeed.billingPeriodEnd),
+          status: "ISSUED",
+          roomId: room.id,
+          sourceBillId: billId,
+          splitMode: billSeed.splitMode,
+          stayDays: shareSeed.stayDays,
+          type: "ELECTRICITY",
+          unitsConsumedShare: unitsShare
+        }
+      });
+    }
   }
 
   for (const complaintSeed of complaintsSeed) {
