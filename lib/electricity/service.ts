@@ -329,6 +329,21 @@ export async function generateRoomBill(input: GenerateBillInput) {
     splitModeFallback: input.splitMode ?? hostel.electricitySplitMode
   });
 
+  const residentIds = shares.map((share) => share.residentId);
+  if (residentIds.length === 0) {
+    await prisma.invoice.deleteMany({
+      where: { sourceBillId: bill.id, type: "ELECTRICITY" }
+    });
+  } else {
+    await prisma.invoice.deleteMany({
+      where: {
+        sourceBillId: bill.id,
+        type: "ELECTRICITY",
+        residentId: { notIn: residentIds }
+      }
+    });
+  }
+
   const invoices = [];
   for (const share of shares) {
     const unitsShare =
