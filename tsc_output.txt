@@ -1,0 +1,1 @@
+tests/mcp/mcp-smoke-script.test.ts(2,29): error TS7016: Could not find a declaration file for module '../../scripts/mcp-smoke.mjs'. 'D:/SDD-Hackathon-Hostel-Management/scripts/mcp-smoke.mjs' implicitly has an 'any' type.

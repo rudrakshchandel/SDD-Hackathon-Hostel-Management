@@ -3,9 +3,16 @@ import { authEnabled } from "@/lib/auth";
 
 export default withAuth({
   callbacks: {
-    authorized: ({ token }) => {
+    authorized: ({ token, req }) => {
       if (!authEnabled) return true;
-      return Boolean(token);
+      if (!token) return false;
+
+      // Restrict /back-office and /api/admin to SUPER_ADMIN
+      if (req.nextUrl.pathname.startsWith("/back-office") || req.nextUrl.pathname.startsWith("/api/admin")) {
+        return token.role === "SUPER_ADMIN";
+      }
+
+      return true;
     }
   },
   pages: {
@@ -19,6 +26,8 @@ export const config = {
     "/rooms/:path*",
     "/hostel/:path*",
     "/tenants/:path*",
-    "/revenue/:path*"
+    "/revenue/:path*",
+    "/back-office/:path*",
+    "/api/admin/:path*"
   ]
 };

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { toNumber } from "@/lib/mcp/tools/result";
 
 export async function getHostelSummaryForMcp() {
-  const [hostel, blocks, floors, rooms, totalBeds, occupiedBeds] = await Promise.all([
+  const [hostel, floors, rooms, totalBeds, occupiedBeds] = await Promise.all([
     prisma.hostel.findFirst({
       where: { status: "ACTIVE" },
       orderBy: { createdAt: "asc" },
@@ -15,7 +15,6 @@ export async function getHostelSummaryForMcp() {
         status: true
       }
     }),
-    prisma.block.count(),
     prisma.floor.count(),
     prisma.room.count({ where: { status: "ACTIVE" } }),
     prisma.bed.count(),
@@ -28,7 +27,6 @@ export async function getHostelSummaryForMcp() {
     generatedAt: new Date().toISOString(),
     hostel,
     counts: {
-      blocks,
       floors,
       rooms,
       totalBeds,

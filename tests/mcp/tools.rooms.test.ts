@@ -29,8 +29,7 @@ describe("mcp rooms tools", () => {
         attributes: { ac: true, smokingAllowed: false },
         floor: {
           floorNumber: 1,
-          label: "First",
-          block: { name: "A" }
+          label: "First"
         },
         beds: [
           { id: "bed-1", status: "AVAILABLE", allocations: [] },
@@ -66,8 +65,7 @@ describe("mcp rooms tools", () => {
         attributes: { ac: false, smokingAllowed: false },
         floor: {
           floorNumber: 1,
-          label: "First",
-          block: { name: "A" }
+          label: "First"
         },
         beds: [
           { id: "bed-1", status: "AVAILABLE", allocations: [] },
@@ -77,7 +75,7 @@ describe("mcp rooms tools", () => {
     ]);
 
     const { getVacancyByLocationForMcp } = await import("@/lib/mcp/tools/rooms");
-    const result = await getVacancyByLocationForMcp({ block: "A", floor: 1 }, 50);
+    const result = await getVacancyByLocationForMcp({ floor: 1 }, 50);
 
     expect(result.totals.totalBeds).toBe(2);
     expect(result.totals.vacantBeds).toBe(2);

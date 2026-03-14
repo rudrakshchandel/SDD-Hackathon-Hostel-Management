@@ -4,7 +4,6 @@ import { maskContact, maskEmail, maskIdNumber } from "@/lib/mcp/redaction";
 import { clampLimit } from "@/lib/mcp/tools/result";
 
 export const tenantsListInputSchema = z.object({
-  block: z.string().trim().min(1).optional(),
   floor: z.number().int().positive().optional(),
   roomNumber: z.string().trim().min(1).optional(),
   status: z.enum(["ACTIVE", "PENDING", "VACATED"]).optional(),
@@ -24,12 +23,6 @@ export async function listTenantsForMcp(
     };
     floor?: {
       floorNumber?: number;
-      block?: {
-        name: {
-          equals: string;
-          mode: "insensitive";
-        };
-      };
     };
   } = {};
 
@@ -40,21 +33,9 @@ export async function listTenantsForMcp(
     };
   }
 
-  if (input.floor || input.block) {
+  if (input.floor) {
     bedRoomWhere.floor = {};
-  }
-
-  if (input.floor && bedRoomWhere.floor) {
     bedRoomWhere.floor.floorNumber = input.floor;
-  }
-
-  if (input.block && bedRoomWhere.floor) {
-    bedRoomWhere.floor.block = {
-      name: {
-        equals: input.block,
-        mode: "insensitive"
-      }
-    };
   }
 
   const allocations = await prisma.allocation.findMany({
@@ -108,12 +89,7 @@ export async function listTenantsForMcp(
               roomNumber: true,
               floor: {
                 select: {
-                  floorNumber: true,
-                  block: {
-                    select: {
-                      name: true
-                    }
-                  }
+                  floorNumber: true
                 }
               }
             }
@@ -142,7 +118,6 @@ export async function listTenantsForMcp(
       contact: maskContact(allocation.resident.contact),
       idProofType: allocation.resident.idProofType,
       idProofNumber: maskIdNumber(allocation.resident.idProofNumber),
-      block: allocation.bed.room.floor.block.name,
       floor: allocation.bed.room.floor.floorNumber,
       roomNumber: allocation.bed.room.roomNumber,
       bedNumber: allocation.bed.bedNumber,

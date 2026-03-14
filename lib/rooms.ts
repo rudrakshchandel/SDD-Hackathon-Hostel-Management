@@ -29,11 +29,20 @@ type RoomWithBedsAndAllocations = {
     id: string;
     floorNumber: number;
     label: string | null;
-    block: {
-      id: string;
-      name: string;
-    };
   };
+  electricityMeter?: {
+    id: string;
+    meterNumber: string;
+    installationDate: Date;
+    isActive: boolean;
+  } | null;
+  electricityBills?: Array<{
+    id: string;
+    billingPeriodStart: Date;
+    billingPeriodEnd: Date;
+    totalAmount: unknown;
+    status: string;
+  }>;
   beds: Array<{
     id: string;
     bedNumber: string;
@@ -51,19 +60,19 @@ export function parseBooleanFilter(value: string | null) {
   return undefined;
 }
 
-function toNumberOrUndefined(input: string | null) {
+export function toNumberOrUndefined(input: string | null) {
   if (!input) return undefined;
   const parsed = Number(input);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function roomHasAnyVacantBed(room: RoomWithBedsAndAllocations) {
+export function roomHasAnyVacantBed(room: RoomWithBedsAndAllocations) {
   return room.beds.some(
     (bed) => bed.status === "AVAILABLE" && bed.allocations.length === 0
   );
 }
 
-function getRoomCounts(room: RoomWithBedsAndAllocations) {
+export function getRoomCounts(room: RoomWithBedsAndAllocations) {
   const totalBeds = room.beds.length;
   const occupiedBeds = room.beds.filter((bed) => bed.allocations.length > 0).length;
   const vacantBeds = room.beds.filter(
@@ -86,7 +95,6 @@ function roomToListDto(room: RoomWithBedsAndAllocations) {
     genderRestriction: room.genderRestriction,
     basePrice: room.basePrice ? Number(room.basePrice) : null,
     attributes: room.attributes,
-    block: room.floor.block,
     floor: {
       id: room.floor.id,
       floorNumber: room.floor.floorNumber,
@@ -109,7 +117,6 @@ function roomToDetailDto(room: RoomWithBedsAndAllocations) {
     genderRestriction: room.genderRestriction,
     basePrice: room.basePrice ? Number(room.basePrice) : null,
     attributes: room.attributes,
-    block: room.floor.block,
     floor: {
       id: room.floor.id,
       floorNumber: room.floor.floorNumber,
@@ -125,7 +132,12 @@ function roomToDetailDto(room: RoomWithBedsAndAllocations) {
         allocationId: allocation.id,
         resident: allocation.resident
       }))
-    }))
+    })),
+    electricity: room.electricityMeter ? {
+      meterNumber: room.electricityMeter.meterNumber,
+      installationDate: room.electricityMeter.installationDate,
+      isActive: room.electricityMeter.isActive
+    } : null
   };
 }
 
@@ -145,7 +157,6 @@ export async function searchRooms(query: URLSearchParams) {
       status: "ACTIVE",
       ...(sharingType ? { sharingType: sharingType as SharingType } : {}),
       ...(floorId ? { floorId } : {}),
-      ...(blockId ? { floor: { blockId } } : {}),
       ...(gender && gender !== "ANY"
         ? {
             genderRestriction: {
@@ -175,7 +186,7 @@ export async function searchRooms(query: URLSearchParams) {
       ...(minPrice !== undefined || maxPrice !== undefined
         ? {
             AND: [
-              ...(minPrice !== undefined ? [{ basePrice: { gte: minPrice } }] : []),
+              ...(minPrice !== undefined ? [{ basePrice: { lte: minPrice === undefined ? undefined : minPrice } }] : []),
               ...(maxPrice !== undefined ? [{ basePrice: { lte: maxPrice } }] : [])
             ]
           }
@@ -183,10 +194,10 @@ export async function searchRooms(query: URLSearchParams) {
     },
     include: {
       floor: {
-        include: {
-          block: {
-            select: { id: true, name: true }
-          }
+        select: {
+          id: true,
+          floorNumber: true,
+          label: true
         }
       },
       beds: {
@@ -226,8 +237,6 @@ export async function searchRooms(query: URLSearchParams) {
 
   return filteredByAvailability
     .sort((a, b) => {
-      const blockCmp = a.floor.block.name.localeCompare(b.floor.block.name);
-      if (blockCmp !== 0) return blockCmp;
       if (a.floor.floorNumber !== b.floor.floorNumber) {
         return a.floor.floorNumber - b.floor.floorNumber;
       }
@@ -244,10 +253,10 @@ export async function getRoomDetail(roomId: string) {
     where: { id: roomId },
     include: {
       floor: {
-        include: {
-          block: {
-            select: { id: true, name: true }
-          }
+        select: {
+          id: true,
+          floorNumber: true,
+          label: true
         }
       },
       beds: {
@@ -272,6 +281,11 @@ export async function getRoomDetail(roomId: string) {
             }
           }
         }
+      },
+      electricityMeter: true,
+      electricityBills: {
+        orderBy: { billingPeriodEnd: "desc" },
+        take: 1
       }
     }
   })) as RoomWithBedsAndAllocations | null;

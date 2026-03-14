@@ -8,7 +8,6 @@ const genderSchema = z.enum(["ANY", "MALE", "FEMALE"]);
 const availabilitySchema = z.enum(["vacant", "full", "all"]);
 
 export const roomsSearchInputSchema = z.object({
-  block: z.string().trim().min(1).optional(),
   floor: z.number().int().positive().optional(),
   sharingType: sharingTypeSchema.optional(),
   ac: z.boolean().optional(),
@@ -21,7 +20,6 @@ export const roomsSearchInputSchema = z.object({
 });
 
 export const vacancyByLocationInputSchema = z.object({
-  block: z.string().trim().min(1).optional(),
   floor: z.number().int().positive().optional()
 });
 
@@ -36,9 +34,6 @@ type RoomRecord = {
   floor: {
     floorNumber: number;
     label: string | null;
-    block: {
-      name: string;
-    };
   };
   beds: Array<{
     id: string;
@@ -93,8 +88,6 @@ function toGenderRestriction(
 }
 
 function sortRooms(a: RoomRecord, b: RoomRecord) {
-  const blockCmp = a.floor.block.name.localeCompare(b.floor.block.name);
-  if (blockCmp !== 0) return blockCmp;
   if (a.floor.floorNumber !== b.floor.floorNumber) {
     return a.floor.floorNumber - b.floor.floorNumber;
   }
@@ -115,7 +108,6 @@ function mapRoom(room: RoomRecord) {
     status: room.status,
     genderRestriction: room.genderRestriction,
     basePrice: room.basePrice === null ? null : toNumber(room.basePrice),
-    block: room.floor.block.name,
     floor: room.floor.floorNumber,
     floorLabel: room.floor.label,
     vacancy: counts,
@@ -131,25 +123,10 @@ async function fetchRooms(
   const take = clampLimit(input.limit, maxRows);
   const floorWhere: {
     floorNumber?: number;
-    block?: {
-      name: {
-        equals: string;
-        mode: "insensitive";
-      };
-    };
   } = {};
 
   if (input.floor) {
     floorWhere.floorNumber = input.floor;
-  }
-
-  if (input.block) {
-    floorWhere.block = {
-      name: {
-        equals: input.block,
-        mode: "insensitive"
-      }
-    };
   }
 
   const roomsRaw = await prisma.room.findMany({
@@ -193,12 +170,7 @@ async function fetchRooms(
       floor: {
         select: {
           floorNumber: true,
-          label: true,
-          block: {
-            select: {
-              name: true
-            }
-          }
+          label: true
         }
       },
       beds: {
@@ -270,7 +242,6 @@ export async function getVacancyByLocationForMcp(
     rooms: rooms.map((room) => ({
       id: room.id,
       roomNumber: room.roomNumber,
-      block: room.floor.block.name,
       floor: room.floor.floorNumber,
       vacancy: roomCounts(room)
     }))

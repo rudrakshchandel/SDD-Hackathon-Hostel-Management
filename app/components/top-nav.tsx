@@ -10,16 +10,26 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/rooms", label: "Rooms" },
   { href: "/hostel", label: "Hostel" },
+  { href: "/electricity/readings", label: "Electricity" },
   { href: "/revenue", label: "Revenue" },
   { href: "/tenants", label: "Tenants" }
 ];
 
+import { useSession } from "next-auth/react";
+
 export default function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const { data: session } = useSession();
+  const userRole = (session?.user as any)?.role;
+
+  const currentNavItems = [...navItems];
+  if (userRole === "SUPER_ADMIN") {
+    currentNavItems.push({ href: "/back-office", label: "Back Office" });
+  }
 
   useEffect(() => {
-    const targets = ["/", ...navItems.map((item) => item.href)].filter(
+    const targets = ["/", ...currentNavItems.map((item) => item.href)].filter(
       (href) => href !== pathname
     );
 
@@ -28,6 +38,7 @@ export default function TopNav() {
         router.prefetch(href);
       }
     };
+    // ... rest of the useEffect logic
 
     const maybeIdle = globalThis as typeof globalThis & {
       requestIdleCallback?: (callback: IdleRequestCallback) => number;
@@ -70,7 +81,7 @@ export default function TopNav() {
           Hostel Management
         </Link>
         <div className="flex flex-wrap gap-2">
-          {navItems.map((item) => {
+          {currentNavItems.map((item) => {
             const isActive =
               pathname === item.href ||
               (item.href !== "/dashboard" && pathname.startsWith(item.href));

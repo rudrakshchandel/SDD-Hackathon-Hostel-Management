@@ -14,6 +14,7 @@ model AdminUser {
   username           String?         @unique
   email              String          @unique
   passwordHash       String
+  role               AdminRole       @default(OWNER)
   status             AdminUserStatus @default(ACTIVE)
   lastLoginAt        DateTime?
   createdAt          DateTime        @default(now())
@@ -22,8 +23,15 @@ model AdminUser {
   receivedPayments   Payment[]       @relation("PaymentReceivedBy")
   closedComplaints   Complaint[]     @relation("ComplaintClosedBy")
   createdNotices     Notice[]        @relation("NoticeCreatedBy")
+  managedHostels     Hostel[]        @relation("HostelAdmins")
 
   @@index([status])
+  @@index([role])
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  OWNER
 }
 
 model Hostel {
@@ -33,41 +41,34 @@ model Hostel {
   contactNumber String?
   timezone      String?
   status        HostelStatus @default(ACTIVE)
+  billingCycle           BillingCycle         @default(MONTHLY)
+  electricityRatePerUnit Decimal?             @db.Decimal(10, 2)
+  electricitySplitMode   ElectricitySplitMode @default(STAY_DURATION)
+  electricityType        ElectricityType      @default(NO_ELECTRICITY)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
-  blocks        Block[]
+  floors        Floor[]
   complaints    Complaint[]
   notices       Notice[]
+  admins         AdminUser[]  @relation("HostelAdmins")
 
   @@index([status])
 }
 
-model Block {
-  id        String    @id @default(cuid())
-  hostelId  String
-  name      String
-  description String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  hostel    Hostel    @relation(fields: [hostelId], references: [id], onDelete: Cascade)
-  floors    Floor[]
 
-  @@unique([hostelId, name])
-  @@index([hostelId])
-}
 
 model Floor {
   id        String    @id @default(cuid())
-  blockId   String
+  hostelId  String
   floorNumber Int
   label     String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  block     Block     @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  hostel    Hostel    @relation(fields: [hostelId], references: [id], onDelete: Cascade)
   rooms     Room[]
 
-  @@unique([blockId, floorNumber])
-  @@index([blockId])
+  @@unique([hostelId, floorNumber])
+  @@index([hostelId])
 }
 
 model Room {
@@ -84,6 +85,9 @@ model Room {
   floor            Floor       @relation(fields: [floorId], references: [id], onDelete: Cascade)
   beds             Bed[]
   complaints       Complaint[]
+  electricityBills ElectricityBill[]
+  electricityMeter ElectricityMeter?
+  invoices         Invoice[]
 
   @@unique([floorId, roomNumber])
   @@index([floorId, status])
@@ -160,10 +164,19 @@ model Invoice {
   status       InvoiceStatus @default(ISSUED)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+  roomId             String?
+  sourceBillId       String?
+  splitMode          ElectricitySplitMode?
+  stayDays           Int?
+  type               InvoiceType           @default(ROOM_RENT)
+  unitsConsumedShare Decimal?              @db.Decimal(10, 2)
   resident     Resident      @relation(fields: [residentId], references: [id], onDelete: Restrict)
   allocation   Allocation?   @relation(fields: [allocationId], references: [id], onDelete: SetNull)
+  room         Room?                 @relation(fields: [roomId], references: [id])
+  sourceBill   ElectricityBill?      @relation(fields: [sourceBillId], references: [id])
   payments     Payment[]
 
+  @@unique([sourceBillId, residentId])
   @@index([residentId, status])
   @@index([dueDate, status])
   @@index([periodStart, periodEnd])
@@ -234,6 +247,46 @@ model Notice {
   @@index([hostelId, status])
 }
 
+model ElectricityMeter {
+  id               String   @id @default(cuid())
+  roomId           String   @unique
+  meterNumber      String
+  installationDate DateTime
+  isActive         Boolean  @default(true)
+  room             Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  readings         MeterReading[]
+}
+
+model MeterReading {
+  id               String             @id
+  meterId          String
+  readingDate      DateTime
+  previousReading  Decimal            @db.Decimal(10, 2)
+  currentReading   Decimal            @db.Decimal(10, 2)
+  unitsConsumed    Decimal            @db.Decimal(10, 2)
+  status           MeterReadingStatus @default(VALID)
+  createdBy        String?
+  notes            String?
+  meter            ElectricityMeter   @relation(fields: [meterId], references: [id], onDelete: Cascade)
+
+  @@index([meterId, readingDate])
+}
+
+model ElectricityBill {
+  id                 String                 @id
+  roomId             String
+  billingPeriodStart DateTime
+  billingPeriodEnd   DateTime
+  unitsConsumed      Decimal                @db.Decimal(10, 2)
+  unitRate           Decimal                @db.Decimal(10, 2)
+  totalAmount        Decimal                @db.Decimal(10, 2)
+  status             ElectricityBillStatus  @default(GENERATED)
+  room               Room                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  invoices           Invoice[]
+
+  @@unique([roomId, billingPeriodStart, billingPeriodEnd])
+}
+
 model WhatsappInboundMessage {
   id                String   @id @default(cuid())
   providerMessageId String   @unique
@@ -275,6 +328,11 @@ enum AdminUserStatus {
 enum HostelStatus {
   ACTIVE
   INACTIVE
+}
+
+enum BillingCycle {
+  MONTHLY
+  CUSTOM
 }
 
 enum SharingType {
@@ -352,6 +410,33 @@ enum PaymentStatus {
   COMPLETED
   FAILED
   REFUNDED
+}
+
+enum ElectricityBillStatus {
+  GENERATED
+  FINALIZED
+}
+
+enum ElectricitySplitMode {
+  EQUAL
+  STAY_DURATION
+}
+
+enum ElectricityType {
+  NO_ELECTRICITY
+  PREPAID
+  METER_BASED
+}
+
+enum InvoiceType {
+  ROOM_RENT
+  ELECTRICITY
+}
+
+enum MeterReadingStatus {
+  VALID
+  RESET_REVIEW
+  CORRECTED
 }
 
 enum ComplaintCategory {
