@@ -1,6 +1,9 @@
-export function buildHostelRoomFilter(hostelId: string) {
+import { Prisma } from "@prisma/client";
+
+export function buildHostelRoomFilter(hostelId: string): Prisma.RoomWhereInput {
   return {
-    status: "ACTIVE" as const,
-    floor: { block: { hostelId } }
+    floor: {
+      hostelId: hostelId
+    }
   };
 }

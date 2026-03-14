@@ -14,6 +14,7 @@ model AdminUser {
   username           String?         @unique
   email              String          @unique
   passwordHash       String
+  role               AdminRole       @default(OWNER)
   status             AdminUserStatus @default(ACTIVE)
   lastLoginAt        DateTime?
   createdAt          DateTime        @default(now())
@@ -22,8 +23,15 @@ model AdminUser {
   receivedPayments   Payment[]       @relation("PaymentReceivedBy")
   closedComplaints   Complaint[]     @relation("ComplaintClosedBy")
   createdNotices     Notice[]        @relation("NoticeCreatedBy")
+  managedHostels     Hostel[]        @relation("HostelAdmins")
 
   @@index([status])
+  @@index([role])
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  OWNER
 }
 
 model Hostel {
@@ -39,39 +47,28 @@ model Hostel {
   electricityType        ElectricityType      @default(NO_ELECTRICITY)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
-  blocks        Block[]
+  floors        Floor[]
   complaints    Complaint[]
   notices       Notice[]
+  admins         AdminUser[]  @relation("HostelAdmins")
 
   @@index([status])
 }
 
-model Block {
-  id        String    @id @default(cuid())
-  hostelId  String
-  name      String
-  description String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  hostel    Hostel    @relation(fields: [hostelId], references: [id], onDelete: Cascade)
-  floors    Floor[]
 
-  @@unique([hostelId, name])
-  @@index([hostelId])
-}
 
 model Floor {
   id        String    @id @default(cuid())
-  blockId   String
+  hostelId  String
   floorNumber Int
   label     String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  block     Block     @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  hostel    Hostel    @relation(fields: [hostelId], references: [id], onDelete: Cascade)
   rooms     Room[]
 
-  @@unique([blockId, floorNumber])
-  @@index([blockId])
+  @@unique([hostelId, floorNumber])
+  @@index([hostelId])
 }
 
 model Room {
@@ -251,7 +248,7 @@ model Notice {
 }
 
 model ElectricityMeter {
-  id               String   @id
+  id               String   @id @default(cuid())
   roomId           String   @unique
   meterNumber      String
   installationDate DateTime

@@ -1,23 +1,26 @@
 import { prisma } from "@/lib/prisma";
 
-export async function getHostelTree() {
+export async function getHostelTree(ownerId?: string) {
   return prisma.hostel.findFirst({
+    where: ownerId
+      ? {
+          admins: {
+            some: { id: ownerId }
+          }
+        }
+      : {},
     orderBy: { createdAt: "asc" },
     include: {
-      blocks: {
-        orderBy: { name: "asc" },
+      floors: {
+        orderBy: { floorNumber: "asc" },
         include: {
-          floors: {
-            orderBy: { floorNumber: "asc" },
+          rooms: {
+            orderBy: { roomNumber: "asc" },
             include: {
-              rooms: {
-                orderBy: { roomNumber: "asc" },
-                include: {
-                  beds: {
-                    orderBy: { bedNumber: "asc" }
-                  }
-                }
-              }
+              beds: {
+                orderBy: { bedNumber: "asc" }
+              },
+              electricityMeter: true
             }
           }
         }
@@ -30,7 +33,7 @@ async function hasActiveResident(where: {
   bedId?: string;
   roomId?: string;
   floorId?: string;
-  blockId?: string;
+  hostelId?: string;
 }) {
   const activeAllocation = await prisma.allocation.findFirst({
     where: {
@@ -40,9 +43,7 @@ async function hasActiveResident(where: {
         ...(where.bedId ? { id: where.bedId } : {}),
         ...(where.roomId ? { roomId: where.roomId } : {}),
         ...(where.floorId ? { room: { floorId: where.floorId } } : {}),
-        ...(where.blockId
-          ? { room: { floor: { blockId: where.blockId } } }
-          : {})
+        ...(where.hostelId ? { room: { floor: { hostelId: where.hostelId } } } : {})
       }
     },
     select: { id: true }
@@ -63,6 +64,6 @@ export function hasActiveResidentsInFloor(floorId: string) {
   return hasActiveResident({ floorId });
 }
 
-export function hasActiveResidentsInBlock(blockId: string) {
-  return hasActiveResident({ blockId });
+export function hasActiveResidentsInHostel(hostelId: string) {
+  return hasActiveResident({ hostelId });
 }

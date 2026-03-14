@@ -17,7 +17,6 @@ type RoomOption = {
   id: string;
   roomNumber: string;
   floor: { floorNumber: number };
-  block: { name: string };
 };
 
 type Meter = {
@@ -147,15 +146,15 @@ export default function ElectricityReadingsClient() {
             <option value="">Select room</option>
             {rooms.map((room) => {
               const meter = meterByRoom.get(room.id);
-              const label = `${room.block.name} / Floor ${room.floor.floorNumber} / Room ${room.roomNumber}`;
+              const label = `Floor ${room.floor.floorNumber} / Room ${room.roomNumber}`;
               return (
                 <option key={room.id} value={room.id}>
-                  {meter ? `${label} (Meter: ${meter.meterNumber})` : label}
+                  {label}
                 </option>
               );
             })}
           </Select>
-          <Input required name="meterNumber" placeholder="Meter number" />
+          <Input name="meterNumber" placeholder="Meter # (Optional)" />
           <Input required name="installationDate" type="date" />
           <button className="glass-btn-primary h-11 rounded-xl px-4 py-2 text-sm" type="submit">
             Assign Meter
@@ -175,7 +174,7 @@ export default function ElectricityReadingsClient() {
             <option value="">Select meter</option>
             {meters.map((meter) => (
               <option key={meter.id} value={meter.id}>
-                {meter.meterNumber} (Room {meter.room.roomNumber})
+                Room {meter.room.roomNumber} (Floor {meter.room.floor.floorNumber})
               </option>
             ))}
           </Select>
@@ -195,7 +194,7 @@ export default function ElectricityReadingsClient() {
             <thead className="bg-white/40 text-left text-xs uppercase tracking-wide text-slate-600">
               <tr>
                 <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">Meter</th>
+                <th className="px-3 py-2">Room</th>
                 <th className="px-3 py-2">Previous</th>
                 <th className="px-3 py-2">Current</th>
                 <th className="px-3 py-2">Units</th>
@@ -215,7 +214,7 @@ export default function ElectricityReadingsClient() {
                   <tr key={reading.id} className="border-t border-white/40">
                     <td className="px-3 py-2">{reading.readingDate.slice(0, 10)}</td>
                     <td className="px-3 py-2">
-                      {selectedMeter?.meterNumber || reading.id.slice(0, 6)}
+                       Room {selectedMeter?.room.roomNumber || "—"}
                     </td>
                     <td className="px-3 py-2">{reading.previousReading}</td>
                     <td className="px-3 py-2">{reading.currentReading}</td>

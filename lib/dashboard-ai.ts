@@ -55,7 +55,6 @@ type SqlPipelineResult = {
   rows: Array<Record<string, unknown>>;
   hints: {
     floorNumber?: number;
-    blockName?: string;
   };
 };
 
@@ -80,7 +79,6 @@ const ORDINAL_MAP: Record<string, number> = {
 
 const ALLOWED_TABLES = [
   "hostel",
-  "block",
   "floor",
   "room",
   "bed",
@@ -150,13 +148,6 @@ export function parseFloorNumber(text: string) {
 }
 
 export function parseBlockName(text: string) {
-  const normalized = text.toLowerCase();
-  const matchA = normalized.match(/\bblock\s+([a-z0-9-]+)/i);
-  if (matchA?.[1]) return matchA[1];
-
-  const matchB = normalized.match(/\b([a-z0-9-]+)\s+block\b/i);
-  if (matchB?.[1]) return matchB[1];
-
   return undefined;
 }
 
@@ -515,10 +506,8 @@ async function getSchemaMetadataCached() {
 
 function buildQueryHints(question: string) {
   const floorNumber = parseFloorNumber(question);
-  const blockName = parseBlockName(question);
   return {
-    floorNumber,
-    blockName
+    floorNumber
   };
 }
 
@@ -526,7 +515,6 @@ async function buildFallbackContext(question: string, intent: AssistantIntent) {
   const hints = buildQueryHints(question);
   let roomMatches: Array<{
     roomNumber: string;
-    block: string;
     floorNumber: number;
     sharingType: string;
     vacantBeds: number;
@@ -538,7 +526,6 @@ async function buildFallbackContext(question: string, intent: AssistantIntent) {
     const roomFilters = parseRoomSearchFilters(question);
     roomMatches = (await searchRooms(roomFilters)).slice(0, 8).map((room) => ({
       roomNumber: room.roomNumber,
-      block: room.block.name,
       floorNumber: room.floor.floorNumber,
       sharingType: room.sharingType,
       vacantBeds: room.counts.vacantBeds,
@@ -632,7 +619,6 @@ async function generateSqlFromQuestion({
   schema: SchemaMetadata;
   hints: {
     floorNumber?: number;
-    blockName?: string;
   };
 }) {
   const response = await fetch(getGeminiEndpoint(false), {

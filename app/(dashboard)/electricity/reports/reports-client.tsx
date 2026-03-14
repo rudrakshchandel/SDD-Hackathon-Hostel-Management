@@ -7,7 +7,6 @@ type RoomReportRow = {
   id: string;
   roomNumber: string;
   floorNumber: number;
-  blockName: string;
   periodStart: string;
   periodEnd: string;
   unitsConsumed: number;
@@ -20,7 +19,7 @@ type TenantReportRow = {
   resident: { fullName: string } | null;
   room: {
     roomNumber: string;
-    floor: { floorNumber: number; block: { name: string } };
+    floor: { floorNumber: number };
   } | null;
   periodStart: string;
   periodEnd: string;
@@ -34,7 +33,6 @@ type MeterReportRow = {
   meterNumber: string;
   roomNumber: string;
   floorNumber: number;
-  blockName: string;
   readingDate: string;
   unitsConsumed: number;
   status: string;
@@ -106,7 +104,7 @@ export default function ElectricityReportsClient() {
                 roomReport.map((row) => (
                   <tr key={row.id} className="border-t border-white/40">
                     <td className="px-3 py-2">
-                      {row.blockName} / Floor {row.floorNumber} / Room {row.roomNumber}
+                      Floor {row.floorNumber} / Room {row.roomNumber}
                     </td>
                     <td className="px-3 py-2">
                       {row.periodStart?.slice(0, 10)} - {row.periodEnd?.slice(0, 10)}
@@ -147,8 +145,8 @@ export default function ElectricityReportsClient() {
                 tenantReport.map((row) => (
                   <tr key={row.id} className="border-t border-white/40">
                     <td className="px-3 py-2">{row.resident?.fullName}</td>
-                    <td className="px-3 py-2">
-                      {row.room?.floor?.block?.name} / Floor {row.room?.floor?.floorNumber} / Room {row.room?.roomNumber}
+                    <td className="px-4 py-2">
+                      Floor {row.room?.floor.floorNumber} / Room {row.room?.roomNumber}
                     </td>
                     <td className="px-3 py-2">
                       {row.periodStart?.slice(0, 10)} - {row.periodEnd?.slice(0, 10)}
@@ -170,7 +168,6 @@ export default function ElectricityReportsClient() {
           <table className="mt-3 min-w-full text-sm">
             <thead className="bg-white/40 text-left text-xs uppercase tracking-wide text-slate-600">
               <tr>
-                <th className="px-3 py-2">Meter</th>
                 <th className="px-3 py-2">Room</th>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Units</th>
@@ -187,9 +184,8 @@ export default function ElectricityReportsClient() {
               ) : (
                 meterReport.map((row) => (
                   <tr key={row.id} className="border-t border-white/40">
-                    <td className="px-3 py-2">{row.meterNumber}</td>
                     <td className="px-3 py-2">
-                      {row.blockName} / Floor {row.floorNumber} / Room {row.roomNumber}
+                      Floor {row.floorNumber} / Room {row.roomNumber}
                     </td>
                     <td className="px-3 py-2">{row.readingDate?.slice(0, 10)}</td>
                     <td className="px-3 py-2">{row.unitsConsumed}</td>

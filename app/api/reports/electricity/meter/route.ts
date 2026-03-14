@@ -14,9 +14,7 @@ export async function GET() {
           room: {
             include: {
               floor: {
-                include: {
-                  block: { select: { id: true, name: true } }
-                }
+                select: { id: true, floorNumber: true, label: true }
               }
             }
           }
@@ -33,7 +31,6 @@ export async function GET() {
     meterNumber: reading.meter.meterNumber,
     roomNumber: reading.meter.room.roomNumber,
     floorNumber: reading.meter.room.floor.floorNumber,
-    blockName: reading.meter.room.floor.block.name,
     readingDate: reading.readingDate,
     previousReading: toNumber(reading.previousReading),
     currentReading: toNumber(reading.currentReading),

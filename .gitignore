@@ -8,10 +8,6 @@
 # production
 /build
 
-# misc
-.DS_Store
-*.pem
-
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -29,4 +25,21 @@ pnpm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# tests
+/test-results/
+/playwright-report/
+/blob-report/
+/test-results.json
+/test_output.txt
+
+# misc
 .worktrees
+.DS_Store
+*.pem
+
+# IDEs
+.vscode/
+.zed/
+.cursor/
+.gemini/
+.idea/

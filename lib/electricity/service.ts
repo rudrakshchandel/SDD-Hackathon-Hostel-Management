@@ -406,7 +406,9 @@ export async function generateHostelBills(input: {
   }
 
   const rooms = await prisma.room.findMany({
-    where: buildHostelRoomFilter(hostel.id),
+    where: {
+      floor: { hostelId: hostel.id }
+    },
     select: { id: true }
   });
 

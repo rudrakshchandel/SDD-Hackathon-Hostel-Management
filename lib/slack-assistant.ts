@@ -2,14 +2,12 @@ import { prisma } from "@/lib/prisma";
 
 type VacancyIntent = {
   floorNumber?: number;
-  blockName?: string;
 };
 
 type FloorVacancyStats = {
   floorId: string;
   floorNumber: number;
   floorLabel: string | null;
-  blockName: string;
   roomsCount: number;
   totalBeds: number;
   occupiedBeds: number;
@@ -83,8 +81,7 @@ function parseVacancyIntent(text: string): VacancyIntent | null {
   if (!asksVacancy) return null;
 
   const floorNumber = parseFloorNumber(text);
-  const blockName = parseBlockName(text);
-  return { floorNumber, blockName };
+  return { floorNumber };
 }
 
 function isFinanceIntent(text: string) {
@@ -109,22 +106,9 @@ async function fetchFloorVacancyStats(
     where: {
       ...(intent.floorNumber !== undefined
         ? { floorNumber: intent.floorNumber }
-        : {}),
-      ...(intent.blockName
-        ? {
-            block: {
-              name: {
-                contains: intent.blockName,
-                mode: "insensitive"
-              }
-            }
-          }
         : {})
     },
     include: {
-      block: {
-        select: { name: true }
-      },
       rooms: {
         include: {
           beds: {
@@ -141,7 +125,7 @@ async function fetchFloorVacancyStats(
         }
       }
     },
-    orderBy: [{ block: { name: "asc" } }, { floorNumber: "asc" }]
+    orderBy: [{ floorNumber: "asc" }]
   });
 
   return floors.map((floor) => {
@@ -169,7 +153,6 @@ async function fetchFloorVacancyStats(
       floorId: floor.id,
       floorNumber: floor.floorNumber,
       floorLabel: floor.label,
-      blockName: floor.block.name,
       roomsCount: floor.rooms.length,
       totalBeds,
       occupiedBeds,
@@ -190,7 +173,7 @@ function buildDeterministicAnswer(
 ) {
   if (stats.length === 0) {
     return intent.floorNumber !== undefined
-      ? `No floor matched floor ${intent.floorNumber}${intent.blockName ? ` in block ${intent.blockName}` : ""}.`
+      ? `No floor matched floor ${intent.floorNumber}.`
       : "No floors matched your vacancy query.";
   }
 
@@ -200,7 +183,7 @@ function buildDeterministicAnswer(
 
   const header =
     stats.length === 1
-      ? `Vacancy for Floor ${stats[0].floorNumber} (${stats[0].blockName}): ${stats[0].vacantBeds}/${stats[0].totalBeds} beds vacant.`
+      ? `Vacancy for Floor ${stats[0].floorNumber}: ${stats[0].vacantBeds}/${stats[0].totalBeds} beds vacant.`
       : `Vacancy summary: ${vacantBeds}/${totalBeds} beds vacant across ${stats.length} floor(s).`;
 
   const lines = stats.map((floor) => {
@@ -210,7 +193,7 @@ function buildDeterministicAnswer(
             .map((room) => `${room.roomNumber} (${room.vacantBeds})`)
             .join(", ")
         : "No vacant rooms";
-    return `• ${floor.blockName} / Floor ${floor.floorNumber}: Vacant ${floor.vacantBeds}/${floor.totalBeds} | Rooms with vacancy: ${roomInfo}`;
+    return `• Floor ${floor.floorNumber}: Vacant ${floor.vacantBeds}/${floor.totalBeds} | Rooms with vacancy: ${roomInfo}`;
   });
 
   return [header, ...lines].join("\n");

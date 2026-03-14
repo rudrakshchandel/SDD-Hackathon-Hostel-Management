@@ -17,8 +17,7 @@ export async function GET() {
           roomNumber: true,
           floor: {
             select: {
-              floorNumber: true,
-              block: { select: { id: true, name: true } }
+              floorNumber: true
             }
           }
         }
@@ -28,7 +27,7 @@ export async function GET() {
     take: 500
   });
 
-  const data = invoices.map((invoice) => ({
+  const data = invoices.map((invoice: any) => ({
     id: invoice.id,
     resident: invoice.resident,
     room: invoice.room,

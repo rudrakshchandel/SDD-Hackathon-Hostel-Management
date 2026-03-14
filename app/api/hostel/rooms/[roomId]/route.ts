@@ -21,14 +21,10 @@ export async function PUT(
   const sharingType = SHARING_TYPES.includes(body.sharingType)
     ? body.sharingType
     : "SINGLE";
-  const genderRestriction = GENDER_RESTRICTIONS.includes(
-    body.genderRestriction
-  )
+  const genderRestriction = GENDER_RESTRICTIONS.includes(body.genderRestriction)
     ? body.genderRestriction
     : "ANY";
-  const status = ROOM_STATUSES.includes(body.status)
-    ? body.status
-    : "ACTIVE";
+  const status = ROOM_STATUSES.includes(body.status) ? body.status : "ACTIVE";
 
   await prisma.room.update({
     where: { id: params.roomId },
@@ -47,6 +43,39 @@ export async function PUT(
           : null
     }
   });
+
+  // Handle electricity meter separately
+  if (body.electricityMeter) {
+    const existing = await prisma.electricityMeter.findUnique({
+      where: { roomId: params.roomId }
+    });
+    const meterData = {
+      meterNumber: String(body.electricityMeter.meterNumber || body.roomNumber),
+      installationDate: new Date(
+        body.electricityMeter.installationDate || new Date()
+      ),
+      isActive: true
+    };
+
+    if (existing) {
+      await prisma.electricityMeter.update({
+        where: { roomId: params.roomId },
+        data: meterData
+      });
+    } else {
+      await prisma.electricityMeter.create({
+        data: {
+          roomId: params.roomId,
+          ...meterData
+        }
+      });
+    }
+  } else if (body.electricityMeter === null) {
+    // If explicitly null, remove meter tracking
+    await prisma.electricityMeter.deleteMany({
+      where: { roomId: params.roomId }
+    });
+  }
 
   const hostel = await getHostelTree();
   return NextResponse.json({ data: hostel });

@@ -12,9 +12,7 @@ export async function GET() {
       room: {
         include: {
           floor: {
-            include: {
-              block: { select: { id: true, name: true } }
-            }
+            select: { id: true, floorNumber: true, label: true }
           }
         }
       }
@@ -28,7 +26,6 @@ export async function GET() {
     roomId: bill.roomId,
     roomNumber: bill.room.roomNumber,
     floorNumber: bill.room.floor.floorNumber,
-    blockName: bill.room.floor.block.name,
     periodStart: bill.billingPeriodStart,
     periodEnd: bill.billingPeriodEnd,
     unitsConsumed: toNumber(bill.unitsConsumed),

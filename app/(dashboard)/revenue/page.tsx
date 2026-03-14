@@ -129,38 +129,33 @@ export default async function RevenuePage() {
   const hostels = await prisma.hostel.findMany({
     orderBy: { name: "asc" },
     include: {
-      blocks: {
-        orderBy: { name: "asc" },
+      floors: {
+        orderBy: { floorNumber: "asc" },
         include: {
-          floors: {
-            orderBy: { floorNumber: "asc" },
+          rooms: {
+            orderBy: { roomNumber: "asc" },
             include: {
-              rooms: {
-                orderBy: { roomNumber: "asc" },
+              beds: {
                 include: {
-                  beds: {
+                  allocations: {
+                    where: {
+                      status: "ACTIVE",
+                      endDate: null
+                    },
                     include: {
-                      allocations: {
-                        where: {
-                          status: "ACTIVE",
-                          endDate: null
-                        },
+                      resident: {
                         include: {
-                          resident: {
+                          invoices: {
+                            where: {
+                              status: { not: "CANCELLED" }
+                            },
                             include: {
-                              invoices: {
+                              payments: {
                                 where: {
-                                  status: { not: "CANCELLED" }
+                                  status: "COMPLETED"
                                 },
-                                include: {
-                                  payments: {
-                                    where: {
-                                      status: "COMPLETED"
-                                    },
-                                    select: {
-                                      amount: true
-                                    }
-                                  }
+                                select: {
+                                  amount: true
                                 }
                               }
                             }
@@ -181,20 +176,18 @@ export default async function RevenuePage() {
   const allPeople: PersonFinancial[] = [];
 
   for (const hostel of hostels) {
-    for (const block of hostel.blocks) {
-      for (const floor of block.floors) {
-        for (const room of floor.rooms) {
-          const roomResidentsMap = new Map<string, PersonFinancial>();
-          for (const bed of room.beds) {
-            for (const allocation of bed.allocations) {
-              const person = personFromResident(allocation.resident);
-              if (!roomResidentsMap.has(person.residentId)) {
-                roomResidentsMap.set(person.residentId, person);
-              }
+    for (const floor of hostel.floors) {
+      for (const room of floor.rooms) {
+        const roomResidentsMap = new Map<string, PersonFinancial>();
+        for (const bed of room.beds) {
+          for (const allocation of bed.allocations) {
+            const person = personFromResident(allocation.resident);
+            if (!roomResidentsMap.has(person.residentId)) {
+              roomResidentsMap.set(person.residentId, person);
             }
           }
-          allPeople.push(...roomResidentsMap.values());
         }
+        allPeople.push(...roomResidentsMap.values());
       }
     }
   }
@@ -256,20 +249,18 @@ export default async function RevenuePage() {
           {hostels.map((hostel) => {
             const hostelPeople: PersonFinancial[] = [];
 
-            for (const block of hostel.blocks) {
-              for (const floor of block.floors) {
-                for (const room of floor.rooms) {
-                  const roomResidentsMap = new Map<string, PersonFinancial>();
-                  for (const bed of room.beds) {
-                    for (const allocation of bed.allocations) {
-                      const person = personFromResident(allocation.resident);
-                      if (!roomResidentsMap.has(person.residentId)) {
-                        roomResidentsMap.set(person.residentId, person);
-                      }
+            for (const floor of hostel.floors) {
+              for (const room of floor.rooms) {
+                const roomResidentsMap = new Map<string, PersonFinancial>();
+                for (const bed of room.beds) {
+                  for (const allocation of bed.allocations) {
+                    const person = personFromResident(allocation.resident);
+                    if (!roomResidentsMap.has(person.residentId)) {
+                      roomResidentsMap.set(person.residentId, person);
                     }
                   }
-                  hostelPeople.push(...roomResidentsMap.values());
                 }
+                hostelPeople.push(...roomResidentsMap.values());
               }
             }
 
@@ -284,107 +275,74 @@ export default async function RevenuePage() {
                 </p>
 
                 <div className="mt-4 space-y-4">
-                  {hostel.blocks.map((block) => {
-                    const blockPeople: PersonFinancial[] = [];
+                  {hostel.floors.map((floor) => {
+                    const floorPeople: PersonFinancial[] = [];
 
-                    for (const floor of block.floors) {
-                      for (const room of floor.rooms) {
-                        const roomResidentsMap = new Map<string, PersonFinancial>();
-                        for (const bed of room.beds) {
-                          for (const allocation of bed.allocations) {
-                            const person = personFromResident(allocation.resident);
-                            if (!roomResidentsMap.has(person.residentId)) {
-                              roomResidentsMap.set(person.residentId, person);
-                            }
+                    for (const room of floor.rooms) {
+                      const roomResidentsMap = new Map<string, PersonFinancial>();
+                      for (const bed of room.beds) {
+                        for (const allocation of bed.allocations) {
+                          const person = personFromResident(allocation.resident);
+                          if (!roomResidentsMap.has(person.residentId)) {
+                            roomResidentsMap.set(person.residentId, person);
                           }
                         }
-                        blockPeople.push(...roomResidentsMap.values());
                       }
+                      floorPeople.push(...roomResidentsMap.values());
                     }
 
-                    const blockSummary = summarizePeople(blockPeople);
+                    const floorSummary = summarizePeople(floorPeople);
 
                     return (
-                      <section key={block.id} className="glass-card p-4">
-                        <h3 className="font-semibold text-slate-900">Block: {block.name}</h3>
+                      <section key={floor.id} className="glass-card p-4">
+                        <h4 className="font-medium text-slate-900">
+                          Floor {floor.floorNumber}
+                          {floor.label ? ` - ${floor.label}` : ""}
+                        </h4>
                         <p className="text-xs text-slate-500">
-                          Block | Invoiced {formatCurrency(blockSummary.invoiced)} | Collected{" "}
-                          {formatCurrency(blockSummary.paid)} | Due {formatCurrency(blockSummary.due)}
+                          Floor | Invoiced {formatCurrency(floorSummary.invoiced)} | Collected{" "}
+                          {formatCurrency(floorSummary.paid)} | Due{" "}
+                          {formatCurrency(floorSummary.due)}
                         </p>
 
                         <div className="mt-3 space-y-3">
-                          {block.floors.map((floor) => {
-                            const floorPeople: PersonFinancial[] = [];
-
-                            for (const room of floor.rooms) {
-                              const roomResidentsMap = new Map<string, PersonFinancial>();
-                              for (const bed of room.beds) {
-                                for (const allocation of bed.allocations) {
-                                  const person = personFromResident(allocation.resident);
-                                  if (!roomResidentsMap.has(person.residentId)) {
-                                    roomResidentsMap.set(person.residentId, person);
-                                  }
+                          {floor.rooms.map((room) => {
+                            const roomResidentsMap = new Map<string, PersonFinancial>();
+                            for (const bed of room.beds) {
+                              for (const allocation of bed.allocations) {
+                                const person = personFromResident(allocation.resident);
+                                if (!roomResidentsMap.has(person.residentId)) {
+                                  roomResidentsMap.set(person.residentId, person);
                                 }
                               }
-                              floorPeople.push(...roomResidentsMap.values());
                             }
-
-                            const floorSummary = summarizePeople(floorPeople);
+                            const roomPeople = [...roomResidentsMap.values()];
+                            const roomSummary = summarizePeople(roomPeople);
 
                             return (
-                              <section key={floor.id} className="rounded-xl border border-white/60 bg-white/40 p-3">
-                                <h4 className="font-medium text-slate-900">
-                                  Floor {floor.floorNumber}
-                                  {floor.label ? ` - ${floor.label}` : ""}
-                                </h4>
+                              <section
+                                key={room.id}
+                                className="rounded-xl border border-white/60 bg-white/45 p-3"
+                              >
+                                <h5 className="font-medium text-slate-900">
+                                  Room {room.roomNumber}
+                                </h5>
                                 <p className="text-xs text-slate-500">
-                                  Floor | Invoiced {formatCurrency(floorSummary.invoiced)} | Collected{" "}
-                                  {formatCurrency(floorSummary.paid)} | Due{" "}
-                                  {formatCurrency(floorSummary.due)}
+                                  Room | Invoiced {formatCurrency(roomSummary.invoiced)} | Collected{" "}
+                                  {formatCurrency(roomSummary.paid)} | Due{" "}
+                                  {formatCurrency(roomSummary.due)}
                                 </p>
 
-                                <div className="mt-3 space-y-3">
-                                  {floor.rooms.map((room) => {
-                                    const roomResidentsMap = new Map<string, PersonFinancial>();
-                                    for (const bed of room.beds) {
-                                      for (const allocation of bed.allocations) {
-                                        const person = personFromResident(allocation.resident);
-                                        if (!roomResidentsMap.has(person.residentId)) {
-                                          roomResidentsMap.set(person.residentId, person);
-                                        }
-                                      }
-                                    }
-                                    const roomPeople = [...roomResidentsMap.values()];
-                                    const roomSummary = summarizePeople(roomPeople);
-
-                                    return (
-                                      <section
-                                        key={room.id}
-                                        className="rounded-xl border border-white/60 bg-white/45 p-3"
-                                      >
-                                        <h5 className="font-medium text-slate-900">
-                                          Room {room.roomNumber}
-                                        </h5>
-                                        <p className="text-xs text-slate-500">
-                                          Room | Invoiced {formatCurrency(roomSummary.invoiced)} | Collected{" "}
-                                          {formatCurrency(roomSummary.paid)} | Due{" "}
-                                          {formatCurrency(roomSummary.due)}
-                                        </p>
-
-                                        <div className="mt-3 space-y-2">
-                                          {roomPeople.length === 0 ? (
-                                            <div className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500">
-                                              No active resident in this room.
-                                            </div>
-                                          ) : (
-                                            roomPeople.map((person) => (
-                                              <PersonRow key={person.residentId} person={person} />
-                                            ))
-                                          )}
-                                        </div>
-                                      </section>
-                                    );
-                                  })}
+                                <div className="mt-3 space-y-2">
+                                  {roomPeople.length === 0 ? (
+                                    <div className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500">
+                                      No active resident in this room.
+                                    </div>
+                                  ) : (
+                                    roomPeople.map((person) => (
+                                      <PersonRow key={person.residentId} person={person} />
+                                    ))
+                                  )}
                                 </div>
                               </section>
                             );

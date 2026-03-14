@@ -30,7 +30,7 @@ export async function POST(
     ? body.status
     : "ACTIVE";
 
-  await prisma.room.create({
+  const room = await prisma.room.create({
     data: {
       floorId: params.floorId,
       roomNumber: String(body.roomNumber),
@@ -47,6 +47,19 @@ export async function POST(
           : null
     }
   });
+
+  // Handle electricity meter
+  if (body.electricityMeter) {
+    await prisma.electricityMeter.create({
+      data: {
+        roomId: room.id,
+        meterNumber: String(body.electricityMeter.meterNumber || body.roomNumber),
+        installationDate: new Date(
+          body.electricityMeter.installationDate || new Date()
+        )
+      }
+    });
+  }
 
   const hostel = await getHostelTree();
   return NextResponse.json({ data: hostel }, { status: 201 });

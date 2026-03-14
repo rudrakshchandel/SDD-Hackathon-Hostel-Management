@@ -30,6 +30,10 @@ export function checkAuthAttemptLimit(
   const ip = getClientIpAddress(request);
   const key = `${action}:${ip}`;
 
+  if (process.env.NODE_ENV === "development" && (ip === "::1" || ip === "127.0.0.1" || ip === "unknown" || ip === "::ffff:127.0.0.1")) {
+    return { allowed: true as const, retryAfterSeconds: 0, remainingAttempts: 999 };
+  }
+
   return checkRateLimitByKey(key, { windowMs, maxAttempts }, authRateLimitStore);
 }
 

@@ -22,39 +22,9 @@ type RoomListItem = {
   genderRestriction: string;
   basePrice: number | null;
   attributes: Record<string, unknown> | null;
-  block: { id: string; name: string };
   floor: { id: string; floorNumber: number; label: string | null };
   counts: { totalBeds: number; occupiedBeds: number; vacantBeds: number };
   availableBeds: Array<{ id: string; bedNumber: string; status: string }>;
-};
-
-type RoomDetail = {
-  id: string;
-  roomNumber: string;
-  sharingType: string;
-  status: string;
-  genderRestriction: string;
-  basePrice: number | null;
-  attributes: Record<string, unknown> | null;
-  block: { id: string; name: string };
-  floor: { id: string; floorNumber: number; label: string | null };
-  counts: { totalBeds: number; occupiedBeds: number; vacantBeds: number };
-  beds: Array<{
-    id: string;
-    bedNumber: string;
-    status: string;
-    occupied: boolean;
-    occupants: Array<{
-      allocationId: string;
-      resident: {
-        id: string;
-        fullName: string;
-        gender: string;
-        status: string;
-        contact: string | null;
-      };
-    }>;
-  }>;
 };
 
 type Resident = {
@@ -65,14 +35,44 @@ type Resident = {
   status: string;
 };
 
+type RoomDetail = {
+  id: string;
+  roomNumber: string;
+  sharingType: string;
+  status: string;
+  genderRestriction: string;
+  basePrice: number | null;
+  attributes: Record<string, unknown> | null;
+  floor: { id: string; floorNumber: number; label: string | null };
+  counts: { totalBeds: number; occupiedBeds: number; vacantBeds: number };
+  electricity?: {
+    meterNumber: string;
+    installationDate: string;
+    isActive: boolean;
+    latestBill: {
+      amount: number;
+      periodStart: string;
+      periodEnd: string;
+      status: string;
+    } | null;
+  } | null;
+  beds: Array<{
+    id: string;
+    bedNumber: string;
+    status: string;
+    occupied: boolean;
+    occupants: Array<{
+      allocationId: string;
+      resident: Resident;
+    }>;
+  }>;
+};
+
 type FilterOptions = {
-  blocks: Array<{ id: string; name: string }>;
   floors: Array<{
     id: string;
     floorNumber: number;
     label: string | null;
-    blockId: string;
-    block: { name: string };
   }>;
 };
 
@@ -83,7 +83,6 @@ type RoomsApiResponse = {
 
 type Filters = {
   sharingType: string;
-  blockId: string;
   floorId: string;
   ac: string;
   smoking: string;
@@ -95,7 +94,6 @@ type Filters = {
 
 const defaultFilters: Filters = {
   sharingType: "",
-  blockId: "",
   floorId: "",
   ac: "any",
   smoking: "any",
@@ -142,12 +140,21 @@ function mutationErrorMessage(error: unknown) {
 }
 
 function formatInr(value: number | null) {
-  if (value === null) return "N/A";
+  if (value === null) return "—";
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 0
   }).format(value);
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(value));
 }
 
 function readFeatureState(
@@ -409,7 +416,6 @@ export default function RoomsDashboardClient() {
   }
 
   const filterOptions = roomsQuery.data?.filterOptions ?? {
-    blocks: [],
     floors: []
   };
   const rooms = useMemo(() => roomsQuery.data?.rooms ?? [], [roomsQuery.data?.rooms]);
@@ -420,7 +426,7 @@ export default function RoomsDashboardClient() {
           .filter((target) => target.status === "AVAILABLE")
           .map((bed) => ({
             id: bed.id,
-            label: `${room.block.name}/F${room.floor.floorNumber} • Room ${room.roomNumber} • Bed ${bed.bedNumber}`
+            label: `Floor ${room.floor.floorNumber} • Room ${room.roomNumber} • Bed ${bed.bedNumber}`
           }))
       ),
     [rooms]
@@ -440,11 +446,8 @@ export default function RoomsDashboardClient() {
     pageError instanceof Error ? pageError.message : pageError ? String(pageError) : null;
 
   const visibleFloors = useMemo(
-    () =>
-      filterOptions.floors.filter((floor) =>
-        filters.blockId ? floor.blockId === filters.blockId : true
-      ),
-    [filterOptions.floors, filters.blockId]
+    () => filterOptions.floors,
+    [filterOptions.floors]
   );
 
   if (roomsQuery.isLoading && !roomsQuery.data) {
@@ -487,27 +490,13 @@ export default function RoomsDashboardClient() {
           </Select>
           <Select
            
-            value={filters.blockId}
-            onChange={(e) =>
-              setFilters((p) => ({ ...p, blockId: e.target.value, floorId: "" }))
-            }
-          >
-            <option value="">Block (All)</option>
-            {filterOptions.blocks.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-           
             value={filters.floorId}
             onChange={(e) => setFilters((p) => ({ ...p, floorId: e.target.value }))}
           >
             <option value="">Floor (All)</option>
             {visibleFloors.map((f) => (
               <option key={f.id} value={f.id}>
-                {f.block.name} - Floor {f.floorNumber}
+                Floor {f.floorNumber}
               </option>
             ))}
           </Select>
@@ -594,7 +583,7 @@ export default function RoomsDashboardClient() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-medium">
-                      Room {room.roomNumber} - {room.block.name}/F{room.floor.floorNumber}
+                      Room {room.roomNumber} - Floor {room.floor.floorNumber}
                     </p>
                     <p className="text-sm text-slate-600">
                       {labelFor(room.sharingType, roomTypeLabels)} | Gender:{" "}
@@ -630,8 +619,7 @@ export default function RoomsDashboardClient() {
                         <div className="glass-panel space-y-3 p-4">
                           <div>
                             <p className="font-medium">
-                              Room {selectedRoomDetails.roomNumber} - {selectedRoomDetails.block.name}
-                              /F{selectedRoomDetails.floor.floorNumber}
+                              Room {selectedRoomDetails.roomNumber} - Floor {selectedRoomDetails.floor.floorNumber}
                             </p>
                             <p className="text-sm text-slate-600">
                               Total {selectedRoomDetails.counts.totalBeds} | Occupied{" "}
@@ -640,6 +628,8 @@ export default function RoomsDashboardClient() {
                             </p>
                             <RoomFeatureBadges attributes={selectedRoomDetails.attributes} />
                           </div>
+
+
 
                           {selectedRoomDetails.beds.map((bed) => (
                             <div key={bed.id} className="glass-card p-3">

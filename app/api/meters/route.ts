@@ -12,9 +12,7 @@ export async function GET(request: Request) {
       room: {
         include: {
           floor: {
-            include: {
-              block: { select: { id: true, name: true } }
-            }
+            select: { id: true, floorNumber: true, label: true }
           }
         }
       }

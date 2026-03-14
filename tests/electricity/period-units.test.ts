@@ -8,8 +8,8 @@ function d(value: string) {
 describe("calculatePeriodUnits", () => {
   it("uses baseline before period and latest reading within period", () => {
     const readings = [
-      { readingDate: d("2026-02-28"), currentReading: 100, status: "VALID" },
-      { readingDate: d("2026-03-15"), currentReading: 140, status: "VALID" }
+      { readingDate: d("2026-02-28"), currentReading: 100, status: "VALID" as any },
+      { readingDate: d("2026-03-15"), currentReading: 140, status: "VALID" as any }
     ];
 
     const units = calculatePeriodUnits(readings, d("2026-03-01"), d("2026-03-31"));
@@ -18,7 +18,7 @@ describe("calculatePeriodUnits", () => {
 
   it("returns 0 when there is no baseline before period", () => {
     const readings = [
-      { readingDate: d("2026-03-05"), currentReading: 150, status: "VALID" }
+      { readingDate: d("2026-03-05"), currentReading: 150, status: "VALID" as any }
     ];
 
     const units = calculatePeriodUnits(readings, d("2026-03-01"), d("2026-03-31"));
@@ -27,8 +27,8 @@ describe("calculatePeriodUnits", () => {
 
   it("ignores readings after period end", () => {
     const readings = [
-      { readingDate: d("2026-02-28"), currentReading: 80, status: "VALID" },
-      { readingDate: d("2026-04-02"), currentReading: 110, status: "VALID" }
+      { readingDate: d("2026-02-28"), currentReading: 80, status: "VALID" as any },
+      { readingDate: d("2026-04-02"), currentReading: 110, status: "VALID" as any }
     ];
 
     const units = calculatePeriodUnits(readings, d("2026-03-01"), d("2026-03-31"));

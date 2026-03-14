@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { runMcpSmoke } from "../../scripts/mcp-smoke.mjs";
+// @ts-ignore
+import { runSmokeTest } from "../../scripts/mcp-smoke.mjs";
 
 describe("mcp smoke script", () => {
   it("calls tools/list then schema.describe and returns success summary", async () => {

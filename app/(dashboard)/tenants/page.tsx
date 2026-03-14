@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 function labelStatus(status: "ACTIVE" | "PENDING" | "VACATED") {
   if (status === "ACTIVE") return "Active";
@@ -39,7 +42,6 @@ function formatDate(value: Date | null | undefined) {
 }
 
 type ResidentStatus = "ACTIVE" | "PENDING" | "VACATED";
-
 type ResidentRow = {
   id: string;
   fullName: string;
@@ -47,13 +49,38 @@ type ResidentRow = {
   contact: string | null;
   status: ResidentStatus;
   rent: number | null;
+  totalDue: number;
+  duesBreakdown: { rent: number; electricity: number };
   nearestDueDate: Date | null;
   allocationLabel: string;
 };
 
 export default async function TenantsPage() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return redirect("/login");
+  }
+  const userId = (session.user as any).id;
+
   const [residents, counts] = await Promise.all([
     prisma.resident.findMany({
+      where: {
+        allocations: {
+          some: {
+            bed: {
+              room: {
+                floor: {
+                  hostel: {
+                    admins: {
+                      some: { id: userId }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -74,10 +101,7 @@ export default async function TenantsPage() {
                     roomNumber: true,
                     floor: {
                       select: {
-                        floorNumber: true,
-                        block: {
-                          select: { name: true }
-                        }
+                        floorNumber: true
                       }
                     },
                     basePrice: true
@@ -97,6 +121,7 @@ export default async function TenantsPage() {
           select: {
             totalAmount: true,
             dueDate: true,
+            type: true,
             payments: {
               where: {
                 status: "COMPLETED"
@@ -129,30 +154,38 @@ export default async function TenantsPage() {
     const floor = room?.floor;
     const rent = room?.basePrice ? toNumber(room.basePrice) : null;
 
-    const pendingInvoices = resident.invoices
-      .map((invoice) => {
+    const duesBreakdown = resident.invoices.reduce(
+      (acc, invoice) => {
         const invoiceTotal = toNumber(invoice.totalAmount);
-        const paid = invoice.payments.reduce(
-          (sum, payment) => sum + toNumber(payment.amount),
+        const paid = (invoice.payments as any[]).reduce(
+          (sum: number, payment: any) => sum + toNumber(payment.amount),
           0
         );
         const due = Math.max(0, invoiceTotal - paid);
-        return {
-          due,
-          dueDate: invoice.dueDate
-        };
-      })
-      .filter((invoice) => invoice.due > 0);
+        if ((invoice as any).type === "ELECTRICITY") acc.electricity += due;
+        else acc.rent += due;
+        return acc;
+      },
+      { rent: 0, electricity: 0 }
+    );
 
-    const nearestDue = pendingInvoices.sort((a, b) => {
-      const at = a.dueDate ? a.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
-      const bt = b.dueDate ? b.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
-      return at - bt;
-    })[0];
+    const totalDue = duesBreakdown.rent + duesBreakdown.electricity;
+
+    const nearestDue = resident.invoices
+      .filter((invoice) => {
+        const total = toNumber(invoice.totalAmount);
+        const paid = (invoice.payments as any[]).reduce((s: number, p: any) => s + toNumber(p.amount), 0);
+        return total - paid > 0;
+      })
+      .sort((a: any, b: any) => {
+        const at = a.dueDate ? a.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
+        const bt = b.dueDate ? b.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
+        return at - bt;
+      })[0];
 
     const allocationLabel =
       bed && room && floor
-        ? `${floor.block.name} / Floor ${floor.floorNumber} / Room ${room.roomNumber} / Bed ${bed.bedNumber}`
+        ? `Floor ${floor.floorNumber} / Room ${room.roomNumber} / Bed ${bed.bedNumber}`
         : "Not allocated";
 
     return {
@@ -162,6 +195,8 @@ export default async function TenantsPage() {
       contact: resident.contact,
       status: resident.status,
       rent,
+      totalDue,
+      duesBreakdown,
       nearestDueDate: nearestDue?.dueDate ?? null,
       allocationLabel
     };
@@ -246,9 +281,10 @@ export default async function TenantsPage() {
                       <th className="px-4 py-3">Name</th>
                       <th className="px-4 py-3">Gender</th>
                       <th className="px-4 py-3">Contact</th>
-                      <th className="px-4 py-3">Hostel Rent</th>
+                      <th className="px-4 py-3 text-right">Base Rent</th>
+                      <th className="px-4 py-3 text-right">Total Owed</th>
                       <th className="px-4 py-3">Due Date</th>
-                      <th className="px-4 py-3">Current Allocation</th>
+                      <th className="px-4 py-3">Allocation</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -257,8 +293,24 @@ export default async function TenantsPage() {
                         <td className="px-4 py-3 font-medium">{resident.fullName}</td>
                         <td className="px-4 py-3">{resident.gender}</td>
                         <td className="px-4 py-3">{resident.contact || "—"}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 text-right">
                           {resident.rent !== null ? formatCurrency(resident.rent) : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {resident.totalDue > 0 ? (
+                            <div className="flex flex-col items-end">
+                              <span className="font-semibold text-rose-600">
+                                {formatCurrency(resident.totalDue)}
+                              </span>
+                              {resident.duesBreakdown.electricity > 0 && (
+                                <span className="text-[10px] text-slate-500">
+                                  incl. {formatCurrency(resident.duesBreakdown.electricity)} Electricity
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-emerald-600 font-medium">Clear</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {resident.nearestDueDate ? (
